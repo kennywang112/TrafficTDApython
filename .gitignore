@@ -1,0 +1,7 @@
+.ipynb_checkpoints
+Data
+Ref
+CalculatedData/*
+__pycache__
+.ipynb
+config.py
