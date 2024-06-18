@@ -14,7 +14,7 @@ def spherical_dist(pos1, pos2, radius=6371):
     angle = np.arccos(np.clip(cos_angle, -1, 1))
     return radius * angle
 
-def calculate_distances(df, scenic_df, colname, distance_threshold=500):
+def calculate_distances(df, scenic_df, colname, distance_threshold=1000):
     # 將經緯度轉換成球體的三維坐標
     df_xyz = latlon_to_xyz(df['緯度'], df['經度'])
     scenic_xyz = latlon_to_xyz(scenic_df['緯度'], scenic_df['經度'])
