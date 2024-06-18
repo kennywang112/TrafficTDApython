@@ -7,12 +7,16 @@ from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 
-def get_clusterN_logit(cluster_data):
+# Multinomial logistic regression
+def get_clusterN_logit(cluster_data, lst):
     scaler = StandardScaler()
     
     c0_for_lm = process_data(cluster_data)
-    c0_for_lm_X = pd.DataFrame(scaler.fit_transform(c0_for_lm), columns = c0_for_lm.columns)
-    c0_for_lm_y = cluster_data['受傷']
+    c0_for_lm_X = pd.DataFrame(scaler.fit_transform(c0_for_lm), columns=c0_for_lm.columns).reset_index(drop=True, inplace=False)
+    # label設定
+    c0_for_lm_y = cluster_data.apply(lambda row: 1 if row['死亡'] != 0 else 2, axis=1)
+        
+    c0_for_lm_X = c0_for_lm_X[lst]
     
     return c0_for_lm_X, c0_for_lm_y
 
@@ -80,7 +84,7 @@ def get_logit_data(cX, cY, select_lst_LR):
 
 def pval(fullA, fullB, lst_regression) :  
     full_logit_X = pd.concat([fullA, fullB], axis=0)
-    full_logit_X = get_clusterN_logit(full_logit_X)[0]
+    full_logit_X = get_clusterN_logit(full_logit_X, lst_regression)[0]
     full_logit_X.reset_index(drop=True, inplace=True)
 
     new_cluster0_y = pd.DataFrame([0] * fullA.shape[0], columns=['label'])
