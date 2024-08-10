@@ -60,8 +60,6 @@ def svc_cm_with_grid_search(X, y):
 def logistic_cm_gridsearch(X, y):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-    # smote_enn = SMOTEENN(random_state=42)
-    # X_resampled_train, y_resampled_train = smote_enn.fit_resample(X_train, y_train)
     smote = SMOTE(random_state=42, k_neighbors=3)
     enn = EditedNearestNeighbours(n_neighbors=3)
     smote_enn = SMOTEENN(smote=smote, enn=enn)
@@ -72,7 +70,7 @@ def logistic_cm_gridsearch(X, y):
     rus_test = RandomUnderSampler(sampling_strategy={1: min_class_count, 2: min_class_count}, random_state=42)
     X_resampled_test, y_resampled_test = rus_test.fit_resample(X_test, y_test)
     
-    model = LogisticRegression(solver='saga', multi_class='multinomial', max_iter=1000)
+    model = LogisticRegression(solver='saga', multi_class='multinomial', max_iter=10000)
     
     parameters = {
         'penalty': ['l1', 'l2'],

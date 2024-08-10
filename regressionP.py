@@ -13,7 +13,7 @@ def get_clusterN_logit(cluster_data, lst):
     
     c0_for_lm = process_data(cluster_data)
     c0_for_lm_X = pd.DataFrame(scaler.fit_transform(c0_for_lm), columns=c0_for_lm.columns).reset_index(drop=True, inplace=False)
-    c0_for_lm_y = cluster_data.apply(lambda row: 1 if row['死亡'] != 0 else 2, axis=1)
+    c0_for_lm_y = cluster_data.apply(lambda row: 1 if row['死亡'] != 0 else 2, axis=1).reset_index(drop=True)
     c0_for_lm_X = c0_for_lm_X[lst]
     
     return c0_for_lm_X, c0_for_lm_y
