@@ -16,7 +16,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import silhouette_score, confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 
 def svc_cm_with_grid_search(X, y):
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=43)
 
     smote = SMOTE(random_state=42, k_neighbors=3)
     enn = EditedNearestNeighbours(n_neighbors=3)
@@ -58,7 +58,7 @@ def svc_cm_with_grid_search(X, y):
     return metrics_df, accuracy, conf_matrix
 
 def logistic_cm_gridsearch(X, y):
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=43)
 
     smote = SMOTE(random_state=42, k_neighbors=3)
     enn = EditedNearestNeighbours(n_neighbors=3)

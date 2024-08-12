@@ -7,6 +7,7 @@ from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 from sklearn import metrics
 from sklearn.metrics import pairwise_distances_argmin_min, silhouette_score
+import plotly.graph_objects as go
 
 from scipy import stats
 
@@ -110,3 +111,57 @@ def get_calinski_from_db(input_data, eps):
         silhouette_score_value = -1
         
     return score, input_data, db, labels, n_clusters_, silhouette_score_value, unique_labels, colors
+
+def do_plot(full_info, calinski_data, labels, db, n_clusters_):
+
+    unique_labels = set(labels)
+    core_samples_mask = np.zeros_like(labels, dtype=bool)
+    core_samples_mask[db.core_sample_indices_] = True
+
+    def matplotlib_to_plotly(cmap, alpha=1):
+        """rgba"""
+        return f'rgba({int(cmap[0]*200)}, {int(cmap[1]*200)}, {int(cmap[2]*200)}, {alpha})'
+
+    colors = [matplotlib_to_plotly(plt.cm.Spectral(each), alpha=0.8) for each in np.linspace(0, 1, len(unique_labels))]
+    fig = go.Figure()
+
+    for k, col in zip(unique_labels, colors):
+        if k == -1:
+            col = 'rgba(0,0,0,0)'
+
+        class_member_mask = labels == k
+
+        core_samples = full_info.iloc[:, 3:6][class_member_mask & core_samples_mask]
+        fig.add_trace(go.Scatter3d(
+            x=core_samples.iloc[:, 0],
+            y=core_samples.iloc[:, 1],
+            z=core_samples.iloc[:, 2],
+            mode='markers',
+            marker=dict(
+                size=6,
+                color=col,
+                opacity=0.8
+            ),
+            name=f'Cluster {k} Core'
+        ))
+
+        non_core_samples = full_info.iloc[:, 3:6][class_member_mask & ~core_samples_mask]
+        fig.add_trace(go.Scatter3d(
+            x=non_core_samples.iloc[:, 0],
+            y=non_core_samples.iloc[:, 1],
+            z=non_core_samples.iloc[:, 2],
+            mode='markers',
+            marker=dict(
+                size=6,
+                color=col,
+                opacity=0.5
+            ),
+            name=f'Cluster {k} Non-Core'
+        ))
+
+    fig.update_layout(
+        title=f"Estimated number of clusters: {n_clusters_}",
+        margin=dict(l=0, r=0, b=0, t=0)
+    )
+
+    fig.show()
