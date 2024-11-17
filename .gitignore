@@ -5,3 +5,4 @@ CalculatedData/*
 __pycache__
 .ipynb
 config.py
+Version3/GridSearch
