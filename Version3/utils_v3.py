@@ -1,5 +1,7 @@
 import pandas as pd
+import numpy as np
 from scipy.stats import chi2_contingency
+from sklearn.preprocessing import LabelEncoder
 
 def compare_categorical_features(full_0, full_1):
     # 添加來源標籤以區分兩個資料表
@@ -31,3 +33,23 @@ def compare_categorical_features(full_0, full_1):
     result_df = result_df.sort_values(by='p_value')  # 按 P 值排序，越小越顯著
     
     return result_df
+
+def average_encoded_label(data):
+    # 轉換為 NumPy 陣列，保持物件型態
+    data = np.array(data, dtype=object)
+    
+    # 移除 NaN 值
+    clean_data = data[~pd.isnull(data)]
+    
+    # 如果沒有數據，返回 NaN
+    if clean_data.size == 0:
+        return np.nan
+    
+    # 使用 LabelEncoder 將類別型資料轉換為數值標籤
+    le = LabelEncoder()
+    encoded_labels = le.fit_transform(clean_data)
+    
+    # 計算標籤的平均值
+    average_value = np.mean(encoded_labels)
+    
+    return average_value
