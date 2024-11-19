@@ -26,9 +26,8 @@ logging.basicConfig(
 )
 
 def elbow_method(X, max_clusters=5):
-
+    
     def calculate_sse(X, labels):
-
         sse = 0
         for label in np.unique(labels):
             cluster_points = X[labels == label]
@@ -40,12 +39,14 @@ def elbow_method(X, max_clusters=5):
     for k in range(1, max_clusters + 1):
         clustering = AgglomerativeClustering(n_clusters=k, linkage='ward')
         labels = clustering.fit_predict(X)
-        sse.append(calculate_sse(np.array(X), labels))
-    
+        current_sse = calculate_sse(np.array(X), labels)
+        sse.append(current_sse)
+
     # 計算 SSE 差值的變化率，找到手肘點
     deltas = np.diff(sse)
     second_derivative = np.diff(deltas)
     elbow_point = np.argmax(second_derivative) + 1
+
     return elbow_point
 
 def mapper_labels(X, y, cover, clustering, n_jobs=-1):
@@ -83,24 +84,36 @@ def mapper_labels(X, y, cover, clustering, n_jobs=-1):
     :rtype: list[list[int]]
     """
 
-    def _run_clustering(local_ids):
-        clust = clone(clustering)
-        local_lbls = clust.fit([X[j] for j in local_ids]).labels_
-        return local_ids, local_lbls
-
     # def _run_clustering(local_ids):
-    #     local_X = [X[j] for j in local_ids]
-    #     best_k = elbow_method(local_X)
-    #     clust = AgglomerativeClustering(n_clusters=best_k)
-    #     local_lbls = clust.fit(local_X).labels_
+    #     clust = clone(clustering)
+    #     local_lbls = clust.fit([X[j] for j in local_ids]).labels_
     #     return local_ids, local_lbls
+
+    def _run_clustering(local_ids):
+        local_X = [X[j] for j in local_ids]
+        best_k = elbow_method(local_X)
+        clust = AgglomerativeClustering(n_clusters=best_k)
+        local_lbls = clust.fit(local_X).labels_
+
+        # calculate group SSE
+        sse = 0
+        for label in np.unique(local_lbls):
+            cluster_points = np.array([local_X[i] for i in range(len(local_lbls)) if local_lbls[i] == label])
+            center = cluster_points.mean(axis=0)
+            sse += np.sum((cluster_points - center) ** 2)
+        
+        return local_ids, local_lbls, sse
+
 
     _lbls = Parallel(n_jobs)(
         delayed(_run_clustering)(local_ids) for local_ids in cover.apply(y)
     )
     itm_lbls = [[] for _ in X]
+    sse_values = []
     max_lbl = 0
-    for local_ids, local_lbls in _lbls:
+
+    for local_ids, local_lbls, sse in _lbls:
+        sse_values.append(sse)
         max_local_lbl = 0
         for local_id, local_lbl in zip(local_ids, local_lbls):
             if local_lbl >= 0:
@@ -108,6 +121,15 @@ def mapper_labels(X, y, cover, clustering, n_jobs=-1):
             if local_lbl > max_local_lbl:
                 max_local_lbl = local_lbl
         max_lbl += max_local_lbl + 1
+
+    # SSE of each group
+    # for i, sse in enumerate(sse_values):
+        # print(f"Group {i+1} SSE: {sse}")
+
+    # mean SSE
+    avg_sse = np.mean(sse_values)
+    print(f"Average SSE: {avg_sse}")
+
     return itm_lbls
 
 def mapper_connected_components(X, y, cover, clustering, n_jobs=-1):

@@ -1,8 +1,11 @@
 import numpy as np
+import sys
 
 from sklearn.datasets import make_circles
 from sklearn.decomposition import PCA
-from sklearn.cluster import DBSCAN
+from sklearn.cluster import DBSCAN, AgglomerativeClustering
+
+sys.path.append('Version3/')
 
 from tdamapper.core import MapperAlgorithm
 from tdamapper.cover import CubicalCover
@@ -22,7 +25,7 @@ mapper_algo = MapperAlgorithm(
         n_intervals=10,
         overlap_frac=0.3
     ),
-    clustering=DBSCAN()
+    clustering=AgglomerativeClustering()
 )
 mapper_graph = mapper_algo.fit_transform(X, lens)
 
