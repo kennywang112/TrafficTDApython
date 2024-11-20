@@ -3,7 +3,6 @@ import networkx as nx
 from joblib import Parallel, delayed
 
 from sklearn.cluster import AgglomerativeClustering
-from sklearn.metrics import pairwise_distances
 import numpy as np
 
 from tdamapper.utils.unionfind import UnionFind
@@ -25,28 +24,26 @@ logging.basicConfig(
     ]
 )
 
+def calculate_sse(X, labels):
+
+    sse = 0
+    for label in np.unique(labels):
+        cluster_points = X[labels == label]
+        center = cluster_points.mean(axis=0)
+        sse += np.sum((cluster_points - center) ** 2)
+    return sse
+
 def elbow_method(X, max_clusters=5):
-    
-    def calculate_sse(X, labels):
-        sse = 0
-        for label in np.unique(labels):
-            cluster_points = X[labels == label]
-            center = cluster_points.mean(axis=0)
-            sse += np.sum((cluster_points - center) ** 2)
-        return sse
 
     sse = []
     for k in range(1, max_clusters + 1):
         clustering = AgglomerativeClustering(n_clusters=k, linkage='ward')
         labels = clustering.fit_predict(X)
-        current_sse = calculate_sse(np.array(X), labels)
-        sse.append(current_sse)
+        sse.append(calculate_sse(np.array(X), labels))
 
-    # 計算 SSE 差值的變化率，找到手肘點
     deltas = np.diff(sse)
     second_derivative = np.diff(deltas)
     elbow_point = np.argmax(second_derivative) + 1
-
     return elbow_point
 
 def mapper_labels(X, y, cover, clustering, n_jobs=-1):
@@ -85,14 +82,27 @@ def mapper_labels(X, y, cover, clustering, n_jobs=-1):
     """
 
     # def _run_clustering(local_ids):
+
     #     clust = clone(clustering)
-    #     local_lbls = clust.fit([X[j] for j in local_ids]).labels_
-    #     return local_ids, local_lbls
+
+    #     local_X = [X[j] for j in local_ids]
+
+    #     local_lbls = clust.fit(local_X).labels_
+
+    #     # sse = []
+    #     # sse.append(calculate_sse(np.array(X), local_lbls))
+    #     sse = 0
+    #     print(local_lbls)
+    #     return local_ids, local_lbls, sse
 
     def _run_clustering(local_ids):
+
+        clust = clone(clustering)
         local_X = [X[j] for j in local_ids]
+        
         best_k = elbow_method(local_X)
-        clust = AgglomerativeClustering(n_clusters=best_k)
+        
+        clust.set_params(n_clusters=best_k)
         local_lbls = clust.fit(local_X).labels_
 
         # calculate group SSE
@@ -101,6 +111,8 @@ def mapper_labels(X, y, cover, clustering, n_jobs=-1):
             cluster_points = np.array([local_X[i] for i in range(len(local_lbls)) if local_lbls[i] == label])
             center = cluster_points.mean(axis=0)
             sse += np.sum((cluster_points - center) ** 2)
+        
+        # print(sse)
         
         return local_ids, local_lbls, sse
 
@@ -128,9 +140,9 @@ def mapper_labels(X, y, cover, clustering, n_jobs=-1):
 
     # mean SSE
     avg_sse = np.mean(sse_values)
-    print(f"Average SSE: {avg_sse}")
+    # print(f"Average SSE: {avg_sse}")
 
-    return itm_lbls
+    return itm_lbls, avg_sse
 
 def mapper_connected_components(X, y, cover, clustering, n_jobs=-1):
     """
@@ -165,7 +177,7 @@ def mapper_connected_components(X, y, cover, clustering, n_jobs=-1):
         component of the point at position i in the dataset.
     :rtype: list[int]
     """
-    itm_lbls = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
+    itm_lbls, avg_sse = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
     label_values = set()
     for lbls in itm_lbls:
         label_values.update(lbls)
@@ -179,7 +191,7 @@ def mapper_connected_components(X, y, cover, clustering, n_jobs=-1):
         # assign -1 to noise points
         root = uf.find(lbls[0]) if lbls else -1
         labels[i] = root
-    return labels
+    return labels, avg_sse
 
 
 def mapper_graph(X, y, cover, clustering, n_jobs=-1):
@@ -214,7 +226,7 @@ def mapper_graph(X, y, cover, clustering, n_jobs=-1):
     :return: The Mapper graph.
     :rtype: :class:`networkx.Graph`
     """
-    itm_lbls = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
+    itm_lbls, avg_sse = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
     graph = nx.Graph()
     for n, lbls in enumerate(itm_lbls):
         for lbl in lbls:
@@ -231,7 +243,7 @@ def mapper_graph(X, y, cover, clustering, n_jobs=-1):
                 target_lbl = lbls[j]
                 if target_lbl not in graph[source_lbl]:
                     graph.add_edge(source_lbl, target_lbl)
-    return graph
+    return graph, avg_sse
 
 
 def aggregate_graph(X, graph, agg):
@@ -473,7 +485,7 @@ class MapperAlgorithm(EstimatorMixin, ParamsMixin):
         self.__clustering = clone(self.__clustering)
         self.__n_jobs = self.n_jobs
         y = X if y is None else y
-        self.graph_ = mapper_graph(
+        self.graph_= mapper_graph(
             X,
             y,
             self.__cover,
