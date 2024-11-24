@@ -77,5 +77,3 @@ def most_common_encoded_label(data):
     # most_common_original_label = le.inverse_transform([most_common_label])[0]
     
     return most_common_label
-
-most_common_encoded_label(rbind_data['事故類型及型態子類別名稱'].to_numpy())

@@ -3,6 +3,8 @@ import networkx as nx
 from joblib import Parallel, delayed
 
 from sklearn.cluster import AgglomerativeClustering
+from sklearn.metrics import silhouette_score
+from collections import Counter
 import numpy as np
 
 from tdamapper.utils.unionfind import UnionFind
@@ -24,27 +26,31 @@ logging.basicConfig(
     ]
 )
 
-def calculate_sse(X, labels):
-
-    sse = 0
-    for label in np.unique(labels):
-        cluster_points = X[labels == label]
-        center = cluster_points.mean(axis=0)
-        sse += np.sum((cluster_points - center) ** 2)
-    return sse
-
 def elbow_method(X, max_clusters=5):
 
-    sse = []
-    for k in range(1, max_clusters + 1):
-        clustering = AgglomerativeClustering(n_clusters=k, linkage='ward')
-        labels = clustering.fit_predict(X)
-        sse.append(calculate_sse(np.array(X), labels))
+    silhouette_scores = []
+    # 遍歷群數從 2 到 max_clusters
+    for k in range(2, max_clusters + 1):
 
-    deltas = np.diff(sse)
-    second_derivative = np.diff(deltas)
-    elbow_point = np.argmax(second_derivative) + 1
-    return elbow_point
+        clustering = FailSafeClustering(
+            AgglomerativeClustering(
+                n_clusters=k, 
+                linkage='ward'
+                ))
+        labels = clustering.fit(X).labels_
+
+        # 只有當聚類數量大於 1 且每個聚類至少有 2 個樣本時才計算輪廓係數
+        if len(set(labels)) > 1 and all(np.bincount(labels) > 1):
+            score = silhouette_score(X, labels)
+        else:
+            score = 0
+
+        silhouette_scores.append(score)
+    
+    # 找到最高輪廓係數的群數
+    best_cluster = np.argmax(silhouette_scores) + 2
+    
+    return best_cluster
 
 def mapper_labels(X, y, cover, clustering, n_jobs=-1):
     """
@@ -80,52 +86,35 @@ def mapper_labels(X, y, cover, clustering, n_jobs=-1):
     :return: A list of node labels for each point in the dataset.
     :rtype: list[list[int]]
     """
-
-    # def _run_clustering(local_ids):
-
-    #     clust = clone(clustering)
-
-    #     local_X = [X[j] for j in local_ids]
-
-    #     local_lbls = clust.fit(local_X).labels_
-
-    #     # sse = []
-    #     # sse.append(calculate_sse(np.array(X), local_lbls))
-    #     sse = 0
-    #     print(local_lbls)
-    #     return local_ids, local_lbls, sse
-
+    
     def _run_clustering(local_ids):
 
         clust = clone(clustering)
         local_X = [X[j] for j in local_ids]
-        
+
+        if len(local_X) < 3:
+            # print(f"Skipping clustering: Too few points ({len(local_X)})")
+            return local_ids, [-1] * len(local_X), 0
+
         best_k = elbow_method(local_X)
         
         clust.set_params(n_clusters=best_k)
         local_lbls = clust.fit(local_X).labels_
-
-        # calculate group SSE
-        sse = 0
-        for label in np.unique(local_lbls):
-            cluster_points = np.array([local_X[i] for i in range(len(local_lbls)) if local_lbls[i] == label])
-            center = cluster_points.mean(axis=0)
-            sse += np.sum((cluster_points - center) ** 2)
+        score = silhouette_score(local_X, local_lbls)
+        # print(f"Best k: {best_k}, Silhouette Score: {score:.3f}")
         
-        # print(sse)
-        
-        return local_ids, local_lbls, sse
+        return local_ids, local_lbls, score
 
 
     _lbls = Parallel(n_jobs)(
         delayed(_run_clustering)(local_ids) for local_ids in cover.apply(y)
     )
     itm_lbls = [[] for _ in X]
-    sse_values = []
+    silhouette_values = []
     max_lbl = 0
 
-    for local_ids, local_lbls, sse in _lbls:
-        sse_values.append(sse)
+    for local_ids, local_lbls, silhouette in _lbls:
+        silhouette_values.append(silhouette)
         max_local_lbl = 0
         for local_id, local_lbl in zip(local_ids, local_lbls):
             if local_lbl >= 0:
@@ -134,15 +123,11 @@ def mapper_labels(X, y, cover, clustering, n_jobs=-1):
                 max_local_lbl = local_lbl
         max_lbl += max_local_lbl + 1
 
-    # SSE of each group
-    # for i, sse in enumerate(sse_values):
-        # print(f"Group {i+1} SSE: {sse}")
+    # mean silhouette
+    avg_silhouette = np.mean(silhouette_values)
+    # print(f"Average silhouette: {avg_silhouette}")
 
-    # mean SSE
-    avg_sse = np.mean(sse_values)
-    # print(f"Average SSE: {avg_sse}")
-
-    return itm_lbls, avg_sse
+    return itm_lbls, avg_silhouette
 
 def mapper_connected_components(X, y, cover, clustering, n_jobs=-1):
     """
@@ -177,7 +162,7 @@ def mapper_connected_components(X, y, cover, clustering, n_jobs=-1):
         component of the point at position i in the dataset.
     :rtype: list[int]
     """
-    itm_lbls, avg_sse = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
+    itm_lbls, avg_silhouette = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
     label_values = set()
     for lbls in itm_lbls:
         label_values.update(lbls)
@@ -191,7 +176,7 @@ def mapper_connected_components(X, y, cover, clustering, n_jobs=-1):
         # assign -1 to noise points
         root = uf.find(lbls[0]) if lbls else -1
         labels[i] = root
-    return labels, avg_sse
+    return labels, avg_silhouette
 
 
 def mapper_graph(X, y, cover, clustering, n_jobs=-1):
@@ -226,7 +211,7 @@ def mapper_graph(X, y, cover, clustering, n_jobs=-1):
     :return: The Mapper graph.
     :rtype: :class:`networkx.Graph`
     """
-    itm_lbls, avg_sse = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
+    itm_lbls, avg_silhouette = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
     graph = nx.Graph()
     for n, lbls in enumerate(itm_lbls):
         for lbl in lbls:
@@ -243,7 +228,7 @@ def mapper_graph(X, y, cover, clustering, n_jobs=-1):
                 target_lbl = lbls[j]
                 if target_lbl not in graph[source_lbl]:
                     graph.add_edge(source_lbl, target_lbl)
-    return graph, avg_sse
+    return graph, avg_silhouette
 
 
 def aggregate_graph(X, graph, agg):
