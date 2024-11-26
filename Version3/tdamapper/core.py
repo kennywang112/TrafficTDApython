@@ -43,7 +43,7 @@ def elbow_method(X, max_clusters=5):
         if len(set(labels)) > 1 and all(np.bincount(labels) > 1):
             score = silhouette_score(X, labels)
         else:
-            score = 0
+            score = -1
 
         silhouette_scores.append(score)
     
@@ -52,7 +52,7 @@ def elbow_method(X, max_clusters=5):
     
     return best_cluster
 
-def mapper_labels(X, y, cover, clustering, n_jobs=-1):
+def mapper_labels(X, y, cover, clustering, n_jobs=5):
     """
     Identify the nodes of the Mapper graph.
 
@@ -94,7 +94,7 @@ def mapper_labels(X, y, cover, clustering, n_jobs=-1):
 
         if len(local_X) < 3:
             # print(f"Skipping clustering: Too few points ({len(local_X)})")
-            return local_ids, [-1] * len(local_X), 0
+            return local_ids, [-1] * len(local_X), -1
 
         best_k = elbow_method(local_X)
         
@@ -129,7 +129,7 @@ def mapper_labels(X, y, cover, clustering, n_jobs=-1):
 
     return itm_lbls, avg_silhouette
 
-def mapper_connected_components(X, y, cover, clustering, n_jobs=-1):
+def mapper_connected_components(X, y, cover, clustering, n_jobs=5):
     """
     Identify the connected components of the Mapper graph.
 
@@ -179,7 +179,7 @@ def mapper_connected_components(X, y, cover, clustering, n_jobs=-1):
     return labels, avg_silhouette
 
 
-def mapper_graph(X, y, cover, clustering, n_jobs=-1):
+def mapper_graph(X, y, cover, clustering, n_jobs=5):
     """
     Create the Mapper graph.
 
@@ -433,7 +433,7 @@ class MapperAlgorithm(EstimatorMixin, ParamsMixin):
         clustering=None,
         failsafe=True,
         verbose=True,
-        n_jobs=-1,
+        n_jobs=5,
     ):
         self.cover = cover
         self.clustering = clustering

@@ -1,10 +1,11 @@
 import numpy as np
 import sys
 import pandas as pd
+import pickle
 
 from sklearn.datasets import make_circles, make_moons
 from sklearn.decomposition import PCA
-from sklearn.cluster import DBSCAN, AgglomerativeClustering
+from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
 
 sys.path.append('Version3/')
@@ -13,9 +14,11 @@ from tdamapper.core import MapperAlgorithm, FailSafeClustering
 from tdamapper.cover import CubicalCover
 from tdamapper.plot import MapperPlot
 
+import matplotlib.pyplot as plt
+
 X, y = make_circles(                # load a labelled dataset
     n_samples=5000,
-    noise=0.05,
+    noise=0.01,
     factor=0.3,
     random_state=42
 )
@@ -23,33 +26,43 @@ X, y = make_circles(                # load a labelled dataset
 pca = PCA(n_components=2)
 lens = pca.fit_transform(X)
 
-explained_variance_ratio  = pca.explained_variance_ratio_
-print(explained_variance_ratio)
+# explained_variance_ratio  = pca.explained_variance_ratio_
 
+detailed_results = []
 
-# silhouette_for_intervals = []
+for overlap in range(3, 6):
+    silhouette_for_intervals = []
 
-# for i in range(2, 10):
-#     mapper_algo = MapperAlgorithm(
-#         cover=CubicalCover(
-#             n_intervals=i,
-#             overlap_frac=0.4
-#         ),
-#         clustering=AgglomerativeClustering()
-#     )
+    for interval in range(5, 11):
+        mapper_algo = MapperAlgorithm(
+            cover=CubicalCover(
+                n_intervals=interval,
+                overlap_frac=overlap / 10
+            ),
+            clustering=AgglomerativeClustering()
+        )
 
-#     mapper_info = mapper_algo.fit_transform(X, lens)
-#     silhouette_for_intervals.append(mapper_info[1])
+        mapper_info = mapper_algo.fit_transform(X, lens)
+        silhouette_for_intervals.append(mapper_info[1])
 
-# print(silhouette_for_intervals)
-# best_interval= np.argmax(silhouette_for_intervals) + 2 # 索引從 0 開始，迴圈從 2 開始，所以1+1
-# print(best_interval)
+        detailed_results.append({
+            "overlap": overlap,
+            "interval": interval,
+            "silhouette": mapper_info[1],
+            "mapper_info": mapper_info
+        })
+ 
+    best_interval = np.argmax(silhouette_for_intervals) + 5  # +5 因為 interval 從5開始
 
-# # 10, 0.65 原始參數
+output_file = '/Users/wangqiqian/Desktop/TrafficTDApython/Version3/GridSearch/example_grid.pkl'
+with open(output_file, 'wb') as f:
+    pickle.dump(detailed_results, f)
+
+# 10, 0.65 原始參數
 # mapper_algo = MapperAlgorithm(
 #     cover=CubicalCover(
-#         n_intervals=5,
-#         overlap_frac=0.38
+#         n_intervals=4,
+#         overlap_frac=0.5
 #     ),
 #     # clustering=AgglomerativeClustering()
 #     clustering=FailSafeClustering(clustering=AgglomerativeClustering())
