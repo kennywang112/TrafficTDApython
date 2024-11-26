@@ -39,6 +39,7 @@ print(total_variance)
 # best_interval= np.argmax(silhouette_for_intervals) + 2
 # print(best_interval)
 
+# document 10, 0.65
 # 最佳參數 4, 0.3
 mapper_algo = MapperAlgorithm(
     cover=CubicalCover(

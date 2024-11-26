@@ -35,7 +35,7 @@ def elbow_method(X, max_clusters=5):
         clustering = FailSafeClustering(
             AgglomerativeClustering(
                 n_clusters=k, 
-                linkage='ward'
+                linkage='single'
                 ))
         labels = clustering.fit(X).labels_
 
@@ -87,6 +87,7 @@ def mapper_labels(X, y, cover, clustering, n_jobs=5):
     :rtype: list[list[int]]
     """
     
+    # 階層方法
     def _run_clustering(local_ids):
 
         clust = clone(clustering)
@@ -105,6 +106,12 @@ def mapper_labels(X, y, cover, clustering, n_jobs=5):
         
         return local_ids, local_lbls, score
 
+    # # 原始模型
+    # def _run_clustering(local_ids):
+    #     clust = clone(clustering)
+    #     local_lbls = clust.fit([X[j] for j in local_ids]).labels_
+    #     score = 0
+    #     return local_ids, local_lbls, score
 
     _lbls = Parallel(n_jobs)(
         delayed(_run_clustering)(local_ids) for local_ids in cover.apply(y)

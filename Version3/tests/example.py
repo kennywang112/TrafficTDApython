@@ -5,7 +5,7 @@ import pickle
 
 from sklearn.datasets import make_circles, make_moons
 from sklearn.decomposition import PCA
-from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import AgglomerativeClustering, DBSCAN
 from sklearn.metrics import silhouette_score
 
 sys.path.append('Version3/')
@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 
 X, y = make_circles(                # load a labelled dataset
     n_samples=5000,
-    noise=0.01,
+    noise=0.03,
     factor=0.3,
     random_state=42
 )
@@ -26,7 +26,7 @@ X, y = make_circles(                # load a labelled dataset
 pca = PCA(n_components=2)
 lens = pca.fit_transform(X)
 
-# explained_variance_ratio  = pca.explained_variance_ratio_
+explained_variance_ratio  = pca.explained_variance_ratio_
 
 detailed_results = []
 
@@ -39,7 +39,7 @@ for overlap in range(3, 6):
                 n_intervals=interval,
                 overlap_frac=overlap / 10
             ),
-            clustering=AgglomerativeClustering()
+            clustering=AgglomerativeClustering(linkage='single')
         )
 
         mapper_info = mapper_algo.fit_transform(X, lens)
@@ -54,38 +54,43 @@ for overlap in range(3, 6):
  
     best_interval = np.argmax(silhouette_for_intervals) + 5  # +5 因為 interval 從5開始
 
-output_file = '/Users/wangqiqian/Desktop/TrafficTDApython/Version3/GridSearch/example_grid.pkl'
-with open(output_file, 'wb') as f:
-    pickle.dump(detailed_results, f)
+# output_file = '/Users/wangqiqian/Desktop/TrafficTDApython/Version3/GridSearch/example_grid.pkl'
+# with open(output_file, 'wb') as f:
+#     pickle.dump(detailed_results, f)
 
-# 10, 0.65 原始參數
-# mapper_algo = MapperAlgorithm(
-#     cover=CubicalCover(
-#         n_intervals=4,
-#         overlap_frac=0.5
-#     ),
-#     # clustering=AgglomerativeClustering()
-#     clustering=FailSafeClustering(clustering=AgglomerativeClustering())
-# )
-# mapper_info = mapper_algo.fit_transform(X, lens)
+print('sorted data')
 
-# mapper_plot = MapperPlot(
-#     mapper_info[0],
-#     dim=2,
-#     iterations=60,
-#     seed=42
-# )
+detailed_results_df = pd.DataFrame(detailed_results)
+sorted = detailed_results_df.sort_values(by='silhouette')
+print(sorted[['silhouette', 'interval', 'overlap']])
 
-# fig = mapper_plot.plot_plotly(
-#     title='',
-#     width=600,
-#     height=600,
-#     colors=y,                       # color according to categorical values
-#     cmap='jet',                     # Jet colormap, for classes
-#     agg=np.nanmean,                 # aggregate on nodes according to mean
-# )
+# 10, 0.65 document參數
+mapper_algo = MapperAlgorithm(
+    cover=CubicalCover(
+        n_intervals=sorted['interval'].iloc[-1],
+        overlap_frac=sorted['overlap'].iloc[-1]/10
+    ),
+    clustering=AgglomerativeClustering(linkage='single')
+)
+mapper_info = mapper_algo.fit_transform(X, lens)
 
-# fig.show(config={'scrollZoom': True})
+mapper_plot = MapperPlot(
+    mapper_info[0],
+    dim=2,
+    iterations=60,
+    seed=42
+)
+
+fig = mapper_plot.plot_plotly(
+    title='',
+    width=600,
+    height=600,
+    colors=y,                       # color according to categorical values
+    cmap='jet',                     # Jet colormap, for classes
+    agg=np.nanmean,                 # aggregate on nodes according to mean
+)
+
+fig.show(config={'scrollZoom': True})
 
 # mapper_plot.plot_plotly_update(
 #     fig,                            # reuse the plot with the same positions
