@@ -1,5 +1,6 @@
 import logging
 import networkx as nx
+from tqdm import tqdm
 from joblib import Parallel, delayed
 
 from sklearn.cluster import AgglomerativeClustering
@@ -44,6 +45,7 @@ def elbow_method(X, max_clusters=5):
             score = silhouette_score(X, labels)
         else:
             score = -1
+            # score = 0
 
         silhouette_scores.append(score)
     
@@ -87,34 +89,39 @@ def mapper_labels(X, y, cover, clustering, n_jobs=5):
     :rtype: list[list[int]]
     """
     
-    # 階層方法
-    def _run_clustering(local_ids):
-
-        clust = clone(clustering)
-        local_X = [X[j] for j in local_ids]
-
-        if len(local_X) < 3:
-            # print(f"Skipping clustering: Too few points ({len(local_X)})")
-            return local_ids, [-1] * len(local_X), -1
-
-        best_k = elbow_method(local_X)
-        
-        clust.set_params(n_clusters=best_k)
-        local_lbls = clust.fit(local_X).labels_
-        score = silhouette_score(local_X, local_lbls)
-        # print(f"Best k: {best_k}, Silhouette Score: {score:.3f}")
-        
-        return local_ids, local_lbls, score
-
-    # # 原始模型
+    # # 階層方法
     # def _run_clustering(local_ids):
+
     #     clust = clone(clustering)
-    #     local_lbls = clust.fit([X[j] for j in local_ids]).labels_
-    #     score = 0
+    #     local_X = [X[j] for j in local_ids]
+
+    #     if len(local_X) < 3:
+    #         # print(f"Skipping clustering: Too few points ({len(local_X)})")
+    #         return local_ids, [-1] * len(local_X), -1
+    #         # return local_ids, [-1] * len(local_X), 0
+
+    #     # best_k = elbow_method(local_X)
+    #     best_k = elbow_method(local_X)
+        
+    #     clust.set_params(n_clusters=best_k)
+    #     local_lbls = clust.fit(local_X).labels_
+    #     score = silhouette_score(local_X, local_lbls)
+    #     # print(f"Best k: {best_k}, Silhouette Score: {score:.3f}")
+        
     #     return local_ids, local_lbls, score
 
+    # 原始模型
+    def _run_clustering(local_ids):
+        clust = clone(clustering)
+        local_lbls = clust.fit([X[j] for j in local_ids]).labels_
+        score = 0
+        return local_ids, local_lbls, score
+
+    cover_result = list(cover.apply(y))
     _lbls = Parallel(n_jobs)(
-        delayed(_run_clustering)(local_ids) for local_ids in cover.apply(y)
+        # delayed(_run_clustering)(local_ids) for local_ids in cover.apply(y)
+        delayed(_run_clustering)(local_ids) 
+        for local_ids in tqdm(cover_result, desc="Processing Clusters")
     )
     itm_lbls = [[] for _ in X]
     silhouette_values = []
