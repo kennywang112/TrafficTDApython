@@ -45,7 +45,6 @@ def elbow_method(X, max_clusters=5):
             score = silhouette_score(X, labels)
         else:
             score = -1
-            # score = 0
 
         silhouette_scores.append(score)
     
@@ -89,7 +88,7 @@ def mapper_labels(X, y, cover, clustering, n_jobs=5):
     :rtype: list[list[int]]
     """
     
-    # # 階層方法
+    # 階層方法
     # def _run_clustering(local_ids):
 
     #     clust = clone(clustering)
@@ -106,16 +105,25 @@ def mapper_labels(X, y, cover, clustering, n_jobs=5):
     #     clust.set_params(n_clusters=best_k)
     #     local_lbls = clust.fit(local_X).labels_
     #     score = silhouette_score(local_X, local_lbls)
-    #     # print(f"Best k: {best_k}, Silhouette Score: {score:.3f}")
+    #     print(f"Best k: {best_k}, Silhouette Score: {score:.3f}")
         
     #     return local_ids, local_lbls, score
 
     # 原始模型
     def _run_clustering(local_ids):
         clust = clone(clustering)
+        local_X = [X[j] for j in local_ids]
         local_lbls = clust.fit([X[j] for j in local_ids]).labels_
-        score = 0
+
+        # Calculate Silhouette Score
+        if len(set(local_lbls)) > 1 and all(np.bincount(local_lbls) > 1):  # Silhouette score requires at least 2 clusters
+            score = silhouette_score(local_X, local_lbls)
+        else:
+            # score = -1  # Default score when there is only one cluster or invalid clustering
+            score = np.nan
+
         return local_ids, local_lbls, score
+        
 
     cover_result = list(cover.apply(y))
     _lbls = Parallel(n_jobs)(
@@ -138,7 +146,10 @@ def mapper_labels(X, y, cover, clustering, n_jobs=5):
         max_lbl += max_local_lbl + 1
 
     # mean silhouette
-    avg_silhouette = np.mean(silhouette_values)
+    # avg_silhouette = np.mean(silhouette_values)
+    valid_silhouettes = [s for s in silhouette_values if not np.isnan(s)]  # 過濾掉 NaN 值
+    avg_silhouette = np.mean(valid_silhouettes) if valid_silhouettes else np.nan  # 平均值
+
     # print(f"Average silhouette: {avg_silhouette}")
 
     return itm_lbls, avg_silhouette
