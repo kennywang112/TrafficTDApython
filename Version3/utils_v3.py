@@ -56,43 +56,10 @@ def average_encoded_label(data):
     return average_value
 
 def most_common_encoded_label(data):
-    # 轉換為 NumPy 陣列，保持物件型態
-    data = np.array(data, dtype=object)
     
-    # 移除 NaN 值
-    clean_data = data[~pd.isnull(data)]
+    most_common_item = Counter(data).most_common(1)[0][0]
     
-    # 如果沒有數據，返回 NaN
-    if clean_data.size == 0:
-        return np.nan
-    
-    # 使用 LabelEncoder 將類別型資料轉換為數值標籤
-    le = LabelEncoder()
-    encoded_labels = le.fit_transform(clean_data)
-    
-    # 計算標籤的眾數
-    label_counts = Counter(encoded_labels)
-    most_common_label = label_counts.most_common(1)[0][0]
-    
-    # 返回原始標籤對應的值
-    # most_common_original_label = le.inverse_transform([most_common_label])[0]
-    
-    return most_common_label
-
-def get_color_data(data):
-
-    data = np.array(data, dtype=object)
-    clean_data = data[~pd.isnull(data)]
-
-    if clean_data.size == 0:
-        return np.nan
-
-    le = LabelEncoder()
-    encoded_labels = le.fit_transform(clean_data)
-
-    label_mapping = {index: label for label, index in zip(le.classes_, range(len(le.classes_)))}
-
-    return label_mapping
+    return most_common_item
 
 def rotate_z(points, theta):
     """
