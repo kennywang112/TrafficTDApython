@@ -78,3 +78,72 @@ def most_common_encoded_label(data):
     # most_common_original_label = le.inverse_transform([most_common_label])[0]
     
     return most_common_label
+
+def get_color_data(data):
+
+    data = np.array(data, dtype=object)
+    clean_data = data[~pd.isnull(data)]
+
+    if clean_data.size == 0:
+        return np.nan
+
+    le = LabelEncoder()
+    encoded_labels = le.fit_transform(clean_data)
+
+    label_mapping = {index: label for label, index in zip(le.classes_, range(len(le.classes_)))}
+
+    return label_mapping
+
+def rotate_z(points, theta):
+    """
+    以 Z 軸為旋轉軸，旋轉點雲。
+    :param points: 點的列表或數組，形狀為 (n, 3)，每一行是 [x, y, z]
+    :param theta: 旋轉角度（以弧度為單位）
+    :return: 旋轉後的點的數組，形狀為 (n, 3)
+    """
+    # 定義 Z 軸旋轉矩陣
+    rotation_matrix = np.array([
+        [np.cos(theta), -np.sin(theta), 0],
+        [np.sin(theta), np.cos(theta),  0],
+        [0,             0,              1]
+    ])
+    
+    # 點雲與旋轉矩陣相乘
+    rotated_points = np.dot(points, rotation_matrix.T)
+    return rotated_points
+
+def rotate_x(points, theta):
+    """
+    以 X 軸為旋轉軸，旋轉點雲。
+    :param points: 點的列表或數組，形狀為 (n, 3)，每一行是 [x, y, z]
+    :param theta: 旋轉角度（以弧度為單位）
+    :return: 旋轉後的點的數組，形狀為 (n, 3)
+    """
+    # 定義 X 軸旋轉矩陣
+    rotation_matrix = np.array([
+        [1, 0,             0],
+        [0, np.cos(theta), -np.sin(theta)],
+        [0, np.sin(theta), np.cos(theta)]
+    ])
+    
+    # 點雲與旋轉矩陣相乘
+    rotated_points = np.dot(points, rotation_matrix.T)
+    return rotated_points
+
+def rotate_y(points, theta):
+    """
+    以 Y 軸為旋轉軸，旋轉點雲。
+    :param points: 點的列表或數組，形狀為 (n, 3)，每一行是 [x, y, z]
+    :param theta: 旋轉角度（以弧度為單位）
+    :return: 旋轉後的點的數組，形狀為 (n, 3)
+    """
+    # 定義 Y 軸旋轉矩陣
+    rotation_matrix = np.array([
+        [np.cos(theta),  0, np.sin(theta)],
+        [0,              1, 0            ],
+        [-np.sin(theta), 0, np.cos(theta)]
+    ])
+    
+    # 點雲與旋轉矩陣相乘
+    rotated_points = np.dot(points, rotation_matrix.T)
+    return rotated_points
