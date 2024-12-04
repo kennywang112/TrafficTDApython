@@ -5,8 +5,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
-from sklearn import metrics
-from sklearn.metrics import pairwise_distances_argmin_min, silhouette_score
+from sklearn.metrics import pairwise_distances_argmin_min, silhouette_score, calinski_harabasz_score
 import plotly.graph_objects as go
 
 from scipy import stats
@@ -104,7 +103,7 @@ def get_calinski_from_db(input_data, eps):
     colors = plt.cm.Spectral(np.linspace(0, 1, len(unique_labels)))
 
     if len(set(labels)) != 1:
-        score = metrics.calinski_harabasz_score(X, labels)
+        score = calinski_harabasz_score(X, labels)
         silhouette_score_value = silhouette_score(X, labels)
     else:
         score = -1

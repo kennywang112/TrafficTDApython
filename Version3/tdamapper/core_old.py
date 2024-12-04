@@ -4,14 +4,13 @@ from tqdm import tqdm
 from joblib import Parallel, delayed
 
 from sklearn.cluster import AgglomerativeClustering
-from sklearn.metrics import silhouette_score, calinski_harabasz_score
+from sklearn.metrics import silhouette_score
 from collections import Counter
 import numpy as np
 
 from tdamapper.utils.unionfind import UnionFind
 from tdamapper._common import ParamsMixin, EstimatorMixin, clone
 
-print('New version')
 
 ATTR_IDS = 'ids'
 ATTR_SIZE = 'size'
@@ -30,24 +29,24 @@ logging.basicConfig(
 
 def elbow_method(X, max_clusters=5):
 
-    CH_scores = []
+    silhouette_scores = []
     # 遍歷群數從 2 到 max_clusters
     for k in range(2, max_clusters + 1):
 
         clustering = FailSafeClustering(
             AgglomerativeClustering(
                 n_clusters=k, 
-                linkage='ward'
+                linkage='single'
                 ))
         labels = clustering.fit(X).labels_
 
         # 只有當聚類數量大於 1 且每個聚類至少有 2 個樣本時才計算輪廓係數
         if len(set(labels)) > 1 and all(np.bincount(labels) > 1):
-            score = calinski_harabasz_score(X, labels)
+            score = silhouette_score(X, labels)
         else:
             score = -1
 
-        CH_scores.append(score)
+        silhouette_scores.append(score)
     
     # 找到最高輪廓係數的群數
     best_cluster = np.argmax(silhouette_scores) + 2
@@ -55,27 +54,60 @@ def elbow_method(X, max_clusters=5):
     return best_cluster
 
 def mapper_labels(X, y, cover, clustering, n_jobs=5):
+    """
+    Identify the nodes of the Mapper graph.
 
+    The function first covers the lens space with overlapping sets, using the
+    cover algorithm provided. Then, for each set, it clusters the points of the
+    dataset that have lens values within that set, using the clustering
+    algorithm provided. The clusters are then labeled with unique integers,
+    starting from zero for each set. The function then adds an offset to the
+    cluster labels, such that the labels are distinct across all sets. The
+    offset is equal to the maximum label of the previous set plus one.
+
+    The function returns a list of node labels for each point in the dataset.
+    The list at position i contains the labels of the nodes that the point at
+    position i belongs to. The labels are sorted in ascending order, and there
+    are no duplicates. If i < j, the labels at position i are strictly less
+    than those at position j.
+
+    :param X: A dataset of n points.
+    :type X: array-like of shape (n, m) or list-like of length n
+    :param y: Lens values for the n points of the dataset.
+    :type y: array-like of shape (n, k) or list-like of length n
+    :param cover: A cover algorithm.
+    :type cover: A class compatible with :class:`tdamapper.core.Cover`
+    :param clustering: A clustering algorithm.
+    :type clustering: An estimator compatible with scikit-learn's clustering
+        interface, typically from :mod:`sklearn.cluster`.
+    :param n_jobs: The maximum number of parallel clustering jobs. This
+        parameter is passed to the constructor of :class:`joblib.Parallel`.
+        Defaults to 1.
+    :type n_jobs: int
+    :return: A list of node labels for each point in the dataset.
+    :rtype: list[list[int]]
+    """
+    
     # 階層方法
-    def _run_clustering(local_ids):
+    # def _run_clustering(local_ids):
 
-        clust = clone(clustering)
-        local_X = [X[j] for j in local_ids]
+    #     clust = clone(clustering)
+    #     local_X = [X[j] for j in local_ids]
 
-        if len(local_X) < 3:
-            # print(f"Skipping clustering: Too few points ({len(local_X)})")
-            return local_ids, [-1] * len(local_X), -1
-            # return local_ids, [-1] * len(local_X), 0
+    #     if len(local_X) < 3:
+    #         # print(f"Skipping clustering: Too few points ({len(local_X)})")
+    #         return local_ids, [-1] * len(local_X), -1
+    #         # return local_ids, [-1] * len(local_X), 0
 
-        # best_k = elbow_method(local_X)
-        best_k = elbow_method(local_X)
+    #     # best_k = elbow_method(local_X)
+    #     best_k = elbow_method(local_X)
         
-        clust.set_params(n_clusters=best_k)
-        local_lbls = clust.fit(local_X).labels_
-        score = silhouette_score(local_X, local_lbls)
-        print(f"Best k: {best_k}, Silhouette Score: {score:.3f}")
+    #     clust.set_params(n_clusters=best_k)
+    #     local_lbls = clust.fit(local_X).labels_
+    #     score = silhouette_score(local_X, local_lbls)
+    #     print(f"Best k: {best_k}, Silhouette Score: {score:.3f}")
         
-        return local_ids, local_lbls, score
+    #     return local_ids, local_lbls, score
 
     # 原始模型
     def _run_clustering(local_ids):
