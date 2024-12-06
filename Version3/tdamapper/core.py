@@ -4,14 +4,12 @@ from tqdm import tqdm
 from joblib import Parallel, delayed
 
 from sklearn.cluster import AgglomerativeClustering
-from sklearn.metrics import silhouette_score, calinski_harabasz_score
+from sklearn.metrics import calinski_harabasz_score
 from collections import Counter
 import numpy as np
 
 from tdamapper.utils.unionfind import UnionFind
 from tdamapper._common import ParamsMixin, EstimatorMixin, clone
-
-print('New version')
 
 ATTR_IDS = 'ids'
 ATTR_SIZE = 'size'
@@ -28,70 +26,58 @@ logging.basicConfig(
     ]
 )
 
-def elbow_method(X, max_clusters=5):
+def CHS(X, max_clusters=5):
 
     CH_scores = []
-    # 遍歷群數從 2 到 max_clusters
+
     for k in range(2, max_clusters + 1):
 
-        clustering = FailSafeClustering(
-            AgglomerativeClustering(
-                n_clusters=k, 
-                linkage='ward'
-                ))
-        labels = clustering.fit(X).labels_
-
-        # 只有當聚類數量大於 1 且每個聚類至少有 2 個樣本時才計算輪廓係數
-        if len(set(labels)) > 1 and all(np.bincount(labels) > 1):
-            score = calinski_harabasz_score(X, labels)
-        else:
-            score = -1
-
+        clustering = AgglomerativeClustering(
+            n_clusters=k,
+            linkage='ward'
+        )
+        local_lbls = clustering.fit(X).labels_
+        # labels = clustering.fit_predict(X)
+        
+        # 確保至少有兩個群
+        if len(np.unique(local_lbls)) < 2:
+            continue
+        
+        score = calinski_harabasz_score(X, local_lbls)
         CH_scores.append(score)
-    
-    # 找到最高輪廓係數的群數
-    best_cluster = np.argmax(silhouette_scores) + 2
-    
-    return best_cluster
+
+    if not CH_scores:  # 如果沒有有效的分群結果
+        print("Unable to calculate CH scores, defaulting to 1 cluster.")
+        return 1, []
+
+    best_cluster = np.argmax(CH_scores) + 2
+    print(f'data: {len(X)}, Best cluster N: {best_cluster}')
+    return best_cluster, CH_scores
 
 def mapper_labels(X, y, cover, clustering, n_jobs=5):
 
-    # 階層方法
     def _run_clustering(local_ids):
 
         clust = clone(clustering)
         local_X = [X[j] for j in local_ids]
 
         if len(local_X) < 3:
-            # print(f"Skipping clustering: Too few points ({len(local_X)})")
-            return local_ids, [-1] * len(local_X), -1
-            # return local_ids, [-1] * len(local_X), 0
 
-        # best_k = elbow_method(local_X)
-        best_k = elbow_method(local_X)
-        
-        clust.set_params(n_clusters=best_k)
+            return local_ids, [-1] * len(local_X), np.nan
+
+        # best_k, CH_in_each_cover = CHS(local_X)
+
+        # if best_k < 2:  # 如果無法形成至少兩個群
+        #     return local_ids, [-1] * len(local_X), np.nan
+
+        # clust.set_params(n_clusters=best_k)
+        # clust.set_params(n_clusters=2)
+
+        # local_lbls = clustering.fit_predict(X)
         local_lbls = clust.fit(local_X).labels_
-        score = silhouette_score(local_X, local_lbls)
-        print(f"Best k: {best_k}, Silhouette Score: {score:.3f}")
+        score = calinski_harabasz_score(local_X, local_lbls)
         
         return local_ids, local_lbls, score
-
-    # 原始模型
-    def _run_clustering(local_ids):
-        clust = clone(clustering)
-        local_X = [X[j] for j in local_ids]
-        local_lbls = clust.fit([X[j] for j in local_ids]).labels_
-
-        # Calculate Silhouette Score
-        if len(set(local_lbls)) > 1 and all(np.bincount(local_lbls) > 1):  # Silhouette score requires at least 2 clusters
-            score = silhouette_score(local_X, local_lbls)
-        else:
-            # score = -1  # Default score when there is only one cluster or invalid clustering
-            score = np.nan
-
-        return local_ids, local_lbls, score
-        
 
     cover_result = list(cover.apply(y))
     _lbls = Parallel(n_jobs)(
@@ -100,11 +86,11 @@ def mapper_labels(X, y, cover, clustering, n_jobs=5):
         for local_ids in tqdm(cover_result, desc="Processing Clusters")
     )
     itm_lbls = [[] for _ in X]
-    silhouette_values = []
+    CH_values = []
     max_lbl = 0
 
-    for local_ids, local_lbls, silhouette in _lbls:
-        silhouette_values.append(silhouette)
+    for local_ids, local_lbls, CH in _lbls:
+        CH_values.append(CH)
         max_local_lbl = 0
         for local_id, local_lbl in zip(local_ids, local_lbls):
             if local_lbl >= 0:
@@ -113,14 +99,10 @@ def mapper_labels(X, y, cover, clustering, n_jobs=5):
                 max_local_lbl = local_lbl
         max_lbl += max_local_lbl + 1
 
-    # mean silhouette
-    # avg_silhouette = np.mean(silhouette_values)
-    valid_silhouettes = [s for s in silhouette_values if not np.isnan(s)]  # 過濾掉 NaN 值
-    avg_silhouette = np.mean(valid_silhouettes) if valid_silhouettes else np.nan  # 平均值
+    valid_CH = [s for s in CH_values if not np.isnan(s)]  # 過濾掉 NaN 值
+    avg_CH = np.mean(valid_CH) if valid_CH else np.nan  # 平均值
 
-    # print(f"Average silhouette: {avg_silhouette}")
-
-    return itm_lbls, avg_silhouette
+    return itm_lbls, avg_CH
 
 def mapper_connected_components(X, y, cover, clustering, n_jobs=5):
     """
@@ -155,7 +137,7 @@ def mapper_connected_components(X, y, cover, clustering, n_jobs=5):
         component of the point at position i in the dataset.
     :rtype: list[int]
     """
-    itm_lbls, avg_silhouette = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
+    itm_lbls, avg_CH = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
     label_values = set()
     for lbls in itm_lbls:
         label_values.update(lbls)
@@ -169,7 +151,7 @@ def mapper_connected_components(X, y, cover, clustering, n_jobs=5):
         # assign -1 to noise points
         root = uf.find(lbls[0]) if lbls else -1
         labels[i] = root
-    return labels, avg_silhouette
+    return labels, avg_CH
 
 
 def mapper_graph(X, y, cover, clustering, n_jobs=5):
@@ -204,7 +186,7 @@ def mapper_graph(X, y, cover, clustering, n_jobs=5):
     :return: The Mapper graph.
     :rtype: :class:`networkx.Graph`
     """
-    itm_lbls, avg_silhouette = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
+    itm_lbls, avg_CH = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
     graph = nx.Graph()
     for n, lbls in enumerate(itm_lbls):
         for lbl in lbls:
@@ -221,7 +203,7 @@ def mapper_graph(X, y, cover, clustering, n_jobs=5):
                 target_lbl = lbls[j]
                 if target_lbl not in graph[source_lbl]:
                     graph.add_edge(source_lbl, target_lbl)
-    return graph, avg_silhouette
+    return graph, avg_CH
 
 
 def aggregate_graph(X, graph, agg):

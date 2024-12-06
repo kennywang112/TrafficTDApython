@@ -64,7 +64,7 @@ class MapperClustering(EstimatorMixin, ParamsMixin):
     :type n_jobs: int
     """
 
-    def __init__(self, cover=None, clustering=None, n_jobs=-1):
+    def __init__(self, cover=None, clustering=None, n_jobs=5):
         self.cover = cover
         self.clustering = clustering
         self.n_jobs = n_jobs
