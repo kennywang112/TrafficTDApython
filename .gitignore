@@ -7,6 +7,6 @@ __pycache__
 config.py
 Version3/GridSearch
 Version3/Calculated
-Version3/Component6FullData
+Version3/Component6Undersample
 Version3/KmodeData
 Version3/MapperGraphs
