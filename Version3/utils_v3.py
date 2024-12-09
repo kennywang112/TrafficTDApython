@@ -114,3 +114,20 @@ def rotate_y(points, theta):
     # 點雲與旋轉矩陣相乘
     rotated_points = np.dot(points, rotation_matrix.T)
     return rotated_points
+
+def split_death_injury(data):
+    # Initialize lists to store death and injury counts
+    deaths = []
+    injuries = []
+    
+    # Loop over each item in the data
+    for item in data:
+        # Split the item by ';'
+        parts = item.split(';')
+        # For deaths, remove non-numeric characters and convert to integer
+        deaths.append(int(''.join(filter(str.isdigit, parts[0]))))
+        # For injuries, remove non-numeric characters and convert to integer
+        injuries.append(int(''.join(filter(str.isdigit, parts[1]))))
+    
+    # Return a DataFrame with the extracted data
+    return pd.DataFrame({'死亡': deaths, '受傷': injuries})
