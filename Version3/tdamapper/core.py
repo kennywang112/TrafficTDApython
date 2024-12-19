@@ -29,21 +29,20 @@ logging.basicConfig(
 def CHS(X, max_clusters=5):
 
     CH_scores = []
-    n_samples = len(X)
-    
+
     for k in range(2, max_clusters + 1):
-        
-        if n_samples < k:  # 如果資料點數量不足以分成 k 群則跳過
-            continue
-        
-        clustering = AgglomerativeClustering(n_clusters=k, linkage='ward')
+
+        clustering = AgglomerativeClustering(
+            n_clusters=k,
+            linkage='ward'
+        )
         local_lbls = clustering.fit(X).labels_
+        # labels = clustering.fit_predict(X)
         
         # 確保至少有兩個群
-        # ValueError: Number of labels is 4. Valid values are 2 to n_samples - 1 (inclusive)
-        if len(np.unique(local_lbls)) < 2 or len(np.unique(local_lbls)) == len(X):
+        if len(np.unique(local_lbls)) < 2:
             continue
-
+        
         score = calinski_harabasz_score(X, local_lbls)
         CH_scores.append(score)
 
@@ -56,55 +55,54 @@ def CHS(X, max_clusters=5):
     return best_cluster, CH_scores
 
 def mapper_labels(X, y, cover, clustering, n_jobs=5):
-    
+
     def _run_clustering(local_ids):
 
         clust = clone(clustering)
         local_X = [X[j] for j in local_ids]
-        
-        best_k, CH_in_each_cover = CHS(local_X)
 
-        if best_k < 2:  # 如果無法形成至少兩個群
-            return local_ids, [-1] * len(local_X), np.nan, np.nan
+        if len(local_X) < 3:
+
+            return local_ids, [-1] * len(local_X), np.nan
+
+        # best_k, CH_in_each_cover = CHS(local_X)
+
+        # if best_k < 2:  # 如果無法形成至少兩個群
+        #     return local_ids, [-1] * len(local_X), np.nan
 
         # clust.set_params(n_clusters=best_k)
-        
-        local_lbls = clust.fit(local_X).labels_
+        # clust.set_params(n_clusters=2)
 
+        # local_lbls = clustering.fit_predict(X)
+        local_lbls = clust.fit(local_X).labels_
         score = calinski_harabasz_score(local_X, local_lbls)
         
-        return local_ids, local_lbls, score, best_k
-    
-    def process_clusters(n_jobs): 
-        
-        cover_result = list(cover.apply(y))
-        _lbls = Parallel(n_jobs=n_jobs)(
-            delayed(_run_clustering)(local_ids)
-            for local_ids in tqdm(cover_result, desc="Processing Clusters")
-            ) 
-        return _lbls
+        return local_ids, local_lbls, score
 
-    try:
-        _lbls = process_clusters(n_jobs)
-    except Exception as e: 
-        print(f"Failed with n_jobs={n_jobs}, retrying with n_jobs=2. Error: {e}") 
-        _lbls = process_clusters(2)
-
+    cover_result = list(cover.apply(y))
+    _lbls = Parallel(n_jobs)(
+        # delayed(_run_clustering)(local_ids) for local_ids in cover.apply(y)
+        delayed(_run_clustering)(local_ids) 
+        for local_ids in tqdm(cover_result, desc="Processing Clusters")
+    )
     itm_lbls = [[] for _ in X]
     CH_values = []
-    cluster_details = []
+    max_lbl = 0
 
-    for local_ids, local_lbls, CH, best_k in _lbls:
+    for local_ids, local_lbls, CH in _lbls:
         CH_values.append(CH)
-        cluster_details.append(best_k)
+        max_local_lbl = 0
         for local_id, local_lbl in zip(local_ids, local_lbls):
             if local_lbl >= 0:
-                itm_lbls[local_id].append(local_lbl)
+                itm_lbls[local_id].append(max_lbl + local_lbl)
+            if local_lbl > max_local_lbl:
+                max_local_lbl = local_lbl
+        max_lbl += max_local_lbl + 1
 
     valid_CH = [s for s in CH_values if not np.isnan(s)]  # 過濾掉 NaN 值
     avg_CH = np.mean(valid_CH) if valid_CH else np.nan  # 平均值
-    
-    return itm_lbls, avg_CH, cluster_details
+
+    return itm_lbls, avg_CH
 
 def mapper_connected_components(X, y, cover, clustering, n_jobs=5):
     """
