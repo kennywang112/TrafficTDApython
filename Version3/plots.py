@@ -59,13 +59,23 @@ class MapperPlotter:
 
         return self.full_info
 
-    def map_colors(self, choose, color_mapping_fixed, size = 0):
+    def map_colors(self, choose, color_mapping_fixed, size=0):
         df = self.full_info[(self.full_info['size'] > size)]
-        unique_values = self.rbind_data[[choose, 'color_for_plot']].drop_duplicates()
+        
+        # 修改这部分代码
+        unique_values = self.rbind_data.reset_index()[[choose, 'color_for_plot']].drop_duplicates()
         df = df.merge(unique_values, left_on='color', right_on='color_for_plot', how='left')
-
-        # 使用外部提供的顏色映射表
-        df['color_for_plot_fixed'] = df[choose].map(color_mapping_fixed)
+        
+        # 處理category類型
+        if df[choose].dtype.name == 'category':
+            # 將category轉為字串符
+            df['color_for_plot_fixed'] = df[choose].astype(str).map(color_mapping_fixed)
+        else:
+            # 其他數據類型
+            if isinstance(df[choose], pd.Series):
+                df['color_for_plot_fixed'] = df[choose].map(color_mapping_fixed)
+            else:
+                df['color_for_plot_fixed'] = df[choose].astype(str).map(color_mapping_fixed)
         
         self.full_info = df
         self.color_palette = color_mapping_fixed
