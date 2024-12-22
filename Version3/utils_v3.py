@@ -45,13 +45,19 @@ def average_encoded_label(data):
     # 如果沒有數據，返回 NaN
     if clean_data.size == 0:
         return np.nan
-    
-    # 使用 LabelEncoder 將類別型資料轉換為數值標籤
-    le = LabelEncoder()
-    encoded_labels = le.fit_transform(clean_data)
-    
-    # 計算標籤的平均值
-    average_value = np.mean(encoded_labels)
+
+    # 判斷是否為字串型資料
+    if all(isinstance(x, str) for x in clean_data):
+        # 如果是字串型，使用 LabelEncoder
+        le = LabelEncoder()
+        encoded_labels = le.fit_transform(clean_data)
+        # 計算標籤的平均值
+        average_value = np.mean(encoded_labels)
+    elif all(isinstance(x, (int, float)) for x in clean_data):
+        # 如果是數值型，直接計算平均值
+        average_value = np.mean(clean_data)
+    else:
+        raise ValueError("Data contains mixed types or unsupported types.")
     
     return average_value
 

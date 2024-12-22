@@ -35,6 +35,8 @@ class MapperPlotter:
         )
         print("Mapper plot created.")
 
+        return self.mapper_plot
+
     def extract_data(self):
         x = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['x']
         y = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['y']
@@ -62,7 +64,6 @@ class MapperPlotter:
     def map_colors(self, choose, color_mapping_fixed, size=0):
         df = self.full_info[(self.full_info['size'] > size)]
         
-        # 修改这部分代码
         unique_values = self.rbind_data.reset_index()[[choose, 'color_for_plot']].drop_duplicates()
         df = df.merge(unique_values, left_on='color', right_on='color_for_plot', how='left')
         
@@ -83,7 +84,7 @@ class MapperPlotter:
 
     def plot(self, choose, unique_categories, color_palette, 
              avg=None, save_path=None, set_label=False, size=100):
-        myfont = FontProperties(fname=r"/System/Library/Fonts/PingFang.ttc")
+        # myfont = FontProperties(fname=r"/System/Library/Fonts/PingFang.ttc")
         clipped_size = np.clip(self.full_info['size'], None, size)
         # clipped_size = self.full_info['size']
 
@@ -117,7 +118,7 @@ class MapperPlotter:
             
             if avg:
                 colorbar = plt.colorbar(scatter, ax=plt.gca(), orientation='vertical', pad=0.02)
-                colorbar.set_label(f'{choose}', fontproperties=myfont)
+                # colorbar.set_label(f'{choose}', fontproperties=myfont)
             else:
                 handles = [
                     plt.Line2D(
