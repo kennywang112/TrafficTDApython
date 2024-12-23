@@ -2,15 +2,16 @@ import re
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.cm import get_cmap
 from matplotlib.font_manager import FontProperties
 from Version3.tdamapper.plot import MapperLayoutInteractive
 
 class MapperPlotter:
-    def __init__(self, mapper_info, rbind_data, detailed_results_df, cmap='jet', seed=10, width=400, height=400):
+    def __init__(self, mapper_info, rbind_data, cmap='jet', seed=10, width=400, height=400, iterations=30):
         self.mapper_info = mapper_info
         self.rbind_data = rbind_data
-        self.detailed_results_df = detailed_results_df
         self.cmap = cmap
+        self.iterations = iterations
         self.seed = seed
         self.width = width
         self.height = height
@@ -28,7 +29,7 @@ class MapperPlotter:
             cmap=self.cmap,
             agg=encoded_label,
             dim=2,
-            iterations=30,
+            iterations=self.iterations,
             seed=self.seed,
             width=self.width,
             height=self.height
@@ -61,39 +62,58 @@ class MapperPlotter:
 
         return self.full_info
 
-    def map_colors(self, choose, color_mapping_fixed, size=0):
+    def map_colors(self, choose, size=0, threshold=5):
+        # 過濾大小的資料點
         df = self.full_info[(self.full_info['size'] > size)]
+
+        # 車的分析適用
+        df = df[(df['x'] > -0.1) & (df['y'] < 0.25) & (df['x'] < 0.06) & (df['y'] > -0.1)]
         
+        # 計算每個標籤的出現次數
+        category_counts = self.rbind_data[choose].value_counts()
+
+        # 篩選出現次數大於 threshold 的標籤
+        filtered_categories = category_counts[category_counts > threshold].index
+
+        # 取得唯一值並過濾不需要的類別
         unique_values = self.rbind_data.reset_index()[[choose, 'color_for_plot']].drop_duplicates()
+        unique_values = unique_values[unique_values[choose].isin(filtered_categories)]
+
+        # 更新 unique_categories 和 color_mapping_fixed
+        unique_categories = filtered_categories.tolist()
+        color_palette = get_cmap("tab20", len(unique_categories))
+        color_mapping_fixed = {category: color_palette(i) for i, category in enumerate(unique_categories)}
+
+        # 合併資料
         df = df.merge(unique_values, left_on='color', right_on='color_for_plot', how='left')
-        
-        # 處理category類型
+
+        # 處理 category 類型
         if df[choose].dtype.name == 'category':
-            # 將category轉為字串符
             df['color_for_plot_fixed'] = df[choose].astype(str).map(color_mapping_fixed)
         else:
-            # 其他數據類型
             if isinstance(df[choose], pd.Series):
                 df['color_for_plot_fixed'] = df[choose].map(color_mapping_fixed)
             else:
                 df['color_for_plot_fixed'] = df[choose].astype(str).map(color_mapping_fixed)
-        
+
         self.full_info = df
         self.color_palette = color_mapping_fixed
+        self.unique_categories = unique_categories  # 保存篩選後的 categories
         print("Colors mapped using predefined mapping.")
 
-    def plot(self, choose, unique_categories, color_palette, 
-             avg=None, save_path=None, set_label=False, size=100):
-        # myfont = FontProperties(fname=r"/System/Library/Fonts/PingFang.ttc")
+    def plot(self, choose, avg=None, save_path=None, set_label=False, size=100):
+        # 過濾掉無效的顏色資料
+        self.full_info = self.full_info.dropna(subset=['color_for_plot_fixed'])
+
         clipped_size = np.clip(self.full_info['size'], None, size)
-        # clipped_size = self.full_info['size']
 
         plt.figure(figsize=(15, 12))
 
         if avg:
-            color=self.full_info['color']
+            color = self.full_info['color']
         else:
-            color=self.full_info['color_for_plot_fixed'].tolist()
+            # 確保 'color_for_plot_fixed' 是有效的顏色格式
+            color = [tuple(c) if isinstance(c, (list, tuple)) else c for c in self.full_info['color_for_plot_fixed']]
 
         scatter = plt.scatter(
             self.full_info['x'], self.full_info['y'],
@@ -115,21 +135,19 @@ class MapperPlotter:
                 plt.plot(x_coords, y_coords, color='grey', alpha=0.5, linewidth=0.5, zorder=0)
 
         if set_label:
-            
             if avg:
                 colorbar = plt.colorbar(scatter, ax=plt.gca(), orientation='vertical', pad=0.02)
-                # colorbar.set_label(f'{choose}', fontproperties=myfont)
             else:
                 handles = [
                     plt.Line2D(
                         [0], [0],
                         marker='o',
-                        color=color_palette(i),
+                        color=self.color_palette[name],
                         markersize=10,
                         label=name
-                    ) for i, name in enumerate(unique_categories)
+                    ) for name in self.unique_categories
                 ]
-                plt.legend(handles=handles, title=f"{choose}", loc='upper right', bbox_to_anchor=(1.2, 1))
+                plt.legend(handles=handles, title=f"{choose}", loc='upper right', bbox_to_anchor=(1, 1))
 
         plt.xlabel('X')
         plt.ylabel('Y')

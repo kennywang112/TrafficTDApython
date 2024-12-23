@@ -137,3 +137,9 @@ def split_death_injury(data):
     
     # Return a DataFrame with the extracted data
     return pd.DataFrame({'死亡': deaths, '受傷': injuries})
+
+def get_unique_ids(input_data):
+    unique_ids = set()
+    for ids_list in input_data['ids']:
+        unique_ids.update(ids_list)
+    return list(unique_ids)

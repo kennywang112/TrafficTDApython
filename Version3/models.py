@@ -7,7 +7,7 @@ import pandas as pd
 def logistic_cm_gridsearch(X, y):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=43)
     
-    model = LogisticRegression(solver='saga', multi_class='multinomial', max_iter=10000)
+    model = LogisticRegression(solver='saga', multi_class='multinomial', max_iter=1000)
     
     parameters = {
         'penalty': ['l1', 'l2'],

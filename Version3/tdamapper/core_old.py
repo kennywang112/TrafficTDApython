@@ -1,18 +1,47 @@
+"""
+Core tools for creating and analyzing Mapper graphs.
+
+The Mapper algorithm is a method for exploring the shape and structure of
+high-dimensional datasets, by constructing a graph representation called Mapper
+graph. The algorithm has three main steps:
+
+1. **Filtering**: Apply a lens function (also called filter) to map the data
+   points to a lower-dimensional space, such as a scalar value or a 2D plane.
+
+2. **Covering**: Arrange the lens space into overlapping open sets, using a
+   cover algorithm such as uniform intervals or balls.
+
+3. **Clustering**: Group the data points in each open set into clusters, using
+   a clustering algorithm such as single-linkage or DBSCAN.
+
+The Mapper graph consists of nodes that represent clusters of data
+points, and edges that connect overlapping clusters (clusters obtained from
+different open sets can possibly overlap). For more details on the Mapper
+algorithm and its applications, see
+
+    Gurjeet Singh, Facundo Mémoli and Gunnar Carlsson, "Topological Methods for
+    the Analysis of High Dimensional Data Sets and 3D Object Recognition",
+    Eurographics Symposium on Point-Based Graphics, 2007.
+
+This module provides the class :class:`tdamapper.core.MapperAlgorithm`, which
+encapsulates the algorithm and its parameters. The Mapper graph produced by
+this module is a NetworkX graph object.
+"""
+
 import logging
 import networkx as nx
-from tqdm import tqdm
 from joblib import Parallel, delayed
 
-from sklearn.cluster import AgglomerativeClustering
-from sklearn.metrics import silhouette_score
-from collections import Counter
-import numpy as np
-
 from tdamapper.utils.unionfind import UnionFind
-from tdamapper._common import ParamsMixin, EstimatorMixin, clone
+from tdamapper._common import (
+    clone,
+    ParamsMixin,
+    EstimatorMixin,
+)
 
 
 ATTR_IDS = 'ids'
+
 ATTR_SIZE = 'size'
 
 
@@ -27,33 +56,8 @@ logging.basicConfig(
     ]
 )
 
-def elbow_method(X, max_clusters=5):
 
-    silhouette_scores = []
-    # 遍歷群數從 2 到 max_clusters
-    for k in range(2, max_clusters + 1):
-
-        clustering = FailSafeClustering(
-            AgglomerativeClustering(
-                n_clusters=k, 
-                linkage='single'
-                ))
-        labels = clustering.fit(X).labels_
-
-        # 只有當聚類數量大於 1 且每個聚類至少有 2 個樣本時才計算輪廓係數
-        if len(set(labels)) > 1 and all(np.bincount(labels) > 1):
-            score = silhouette_score(X, labels)
-        else:
-            score = -1
-
-        silhouette_scores.append(score)
-    
-    # 找到最高輪廓係數的群數
-    best_cluster = np.argmax(silhouette_scores) + 2
-    
-    return best_cluster
-
-def mapper_labels(X, y, cover, clustering, n_jobs=5):
+def mapper_labels(X, y, cover, clustering, n_jobs=1):
     """
     Identify the nodes of the Mapper graph.
 
@@ -87,56 +91,17 @@ def mapper_labels(X, y, cover, clustering, n_jobs=5):
     :return: A list of node labels for each point in the dataset.
     :rtype: list[list[int]]
     """
-    
-    # 階層方法
-    # def _run_clustering(local_ids):
+    def _run_clustering(local_ids, X_local, clust):
+        local_lbls = clust.fit(X_local).labels_
+        return local_ids, local_lbls
 
-    #     clust = clone(clustering)
-    #     local_X = [X[j] for j in local_ids]
-
-    #     if len(local_X) < 3:
-    #         # print(f"Skipping clustering: Too few points ({len(local_X)})")
-    #         return local_ids, [-1] * len(local_X), -1
-    #         # return local_ids, [-1] * len(local_X), 0
-
-    #     # best_k = elbow_method(local_X)
-    #     best_k = elbow_method(local_X)
-        
-    #     clust.set_params(n_clusters=best_k)
-    #     local_lbls = clust.fit(local_X).labels_
-    #     score = silhouette_score(local_X, local_lbls)
-    #     print(f"Best k: {best_k}, Silhouette Score: {score:.3f}")
-        
-    #     return local_ids, local_lbls, score
-
-    # 原始模型
-    def _run_clustering(local_ids):
-        clust = clone(clustering)
-        local_X = [X[j] for j in local_ids]
-        local_lbls = clust.fit([X[j] for j in local_ids]).labels_
-
-        # Calculate Silhouette Score
-        if len(set(local_lbls)) > 1 and all(np.bincount(local_lbls) > 1):  # Silhouette score requires at least 2 clusters
-            score = silhouette_score(local_X, local_lbls)
-        else:
-            # score = -1  # Default score when there is only one cluster or invalid clustering
-            score = np.nan
-
-        return local_ids, local_lbls, score
-        
-
-    cover_result = list(cover.apply(y))
-    _lbls = Parallel(n_jobs)(
-        # delayed(_run_clustering)(local_ids) for local_ids in cover.apply(y)
-        delayed(_run_clustering)(local_ids) 
-        for local_ids in tqdm(cover_result, desc="Processing Clusters")
+    _lbls = Parallel(n_jobs, prefer='threads')(
+        delayed(_run_clustering)(local_ids, [X[j] for j in local_ids], clone(clustering))
+        for local_ids in cover.apply(y)
     )
     itm_lbls = [[] for _ in X]
-    silhouette_values = []
     max_lbl = 0
-
-    for local_ids, local_lbls, silhouette in _lbls:
-        silhouette_values.append(silhouette)
+    for local_ids, local_lbls in _lbls:
         max_local_lbl = 0
         for local_id, local_lbl in zip(local_ids, local_lbls):
             if local_lbl >= 0:
@@ -144,17 +109,10 @@ def mapper_labels(X, y, cover, clustering, n_jobs=5):
             if local_lbl > max_local_lbl:
                 max_local_lbl = local_lbl
         max_lbl += max_local_lbl + 1
+    return itm_lbls
 
-    # mean silhouette
-    # avg_silhouette = np.mean(silhouette_values)
-    valid_silhouettes = [s for s in silhouette_values if not np.isnan(s)]  # 過濾掉 NaN 值
-    avg_silhouette = np.mean(valid_silhouettes) if valid_silhouettes else np.nan  # 平均值
 
-    # print(f"Average silhouette: {avg_silhouette}")
-
-    return itm_lbls, avg_silhouette
-
-def mapper_connected_components(X, y, cover, clustering, n_jobs=5):
+def mapper_connected_components(X, y, cover, clustering, n_jobs=1):
     """
     Identify the connected components of the Mapper graph.
 
@@ -187,7 +145,7 @@ def mapper_connected_components(X, y, cover, clustering, n_jobs=5):
         component of the point at position i in the dataset.
     :rtype: list[int]
     """
-    itm_lbls, avg_silhouette = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
+    itm_lbls = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
     label_values = set()
     for lbls in itm_lbls:
         label_values.update(lbls)
@@ -201,10 +159,10 @@ def mapper_connected_components(X, y, cover, clustering, n_jobs=5):
         # assign -1 to noise points
         root = uf.find(lbls[0]) if lbls else -1
         labels[i] = root
-    return labels, avg_silhouette
+    return labels
 
 
-def mapper_graph(X, y, cover, clustering, n_jobs=5):
+def mapper_graph(X, y, cover, clustering, n_jobs=1):
     """
     Create the Mapper graph.
 
@@ -236,7 +194,7 @@ def mapper_graph(X, y, cover, clustering, n_jobs=5):
     :return: The Mapper graph.
     :rtype: :class:`networkx.Graph`
     """
-    itm_lbls, avg_silhouette = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
+    itm_lbls = mapper_labels(X, y, cover, clustering, n_jobs=n_jobs)
     graph = nx.Graph()
     for n, lbls in enumerate(itm_lbls):
         for lbl in lbls:
@@ -253,7 +211,7 @@ def mapper_graph(X, y, cover, clustering, n_jobs=5):
                 target_lbl = lbls[j]
                 if target_lbl not in graph[source_lbl]:
                     graph.add_edge(source_lbl, target_lbl)
-    return graph, avg_silhouette
+    return graph
 
 
 def aggregate_graph(X, graph, agg):
@@ -583,3 +541,4 @@ class TrivialClustering(ParamsMixin):
         """
         self.labels_ = [0 for _ in X]
         return self
+
