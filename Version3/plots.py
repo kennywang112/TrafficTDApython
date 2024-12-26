@@ -1,10 +1,17 @@
 import re
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.cm import get_cmap
 from matplotlib.font_manager import FontProperties
 from Version3.tdamapper.plot import MapperLayoutInteractive
+
+import dash
+from dash import Dash, html, dcc, Input, Output
+import dash_cytoscape as cyto
+import pandas as pd
+from jupyter_dash import JupyterDash
 
 class MapperPlotter:
     def __init__(self, mapper_info, rbind_data, cmap='jet', seed=10, width=400, height=400, iterations=30):
@@ -62,13 +69,14 @@ class MapperPlotter:
 
         return self.full_info
 
-    def map_colors(self, choose, size=0, threshold=5):
+    def map_colors(self, choose, size=0, threshold=5, range_lst = None):
+        # range_lst [x_min, x_max, y_min, y_max]
         # 過濾大小的資料點
         df = self.full_info[(self.full_info['size'] > size)]
 
-        # 車的分析適用
-        df = df[(df['x'] > -0.1) & (df['y'] < 0.25) & (df['x'] < 0.06) & (df['y'] > -0.1)]
-        
+        if range_lst is not None:
+            # 車的分析適用
+            df = df[(df['x'] > range_lst[0]) & (df['y'] < range_lst[2]) & (df['x'] < range_lst[1]) & (df['y'] > range_lst[3])]
         # 計算每個標籤的出現次數
         category_counts = self.rbind_data[choose].value_counts()
 
@@ -159,3 +167,58 @@ class MapperPlotter:
             print(f"Plot saved to {save_path}")
         else:
             plt.show()
+
+    def plot_with_interaction(self, port=10):
+        # 構建節點
+        nodes = [
+            {
+                'data': {'id': str(row['node']), 'label': f"Node: {row['node']}", 'size': row['size']},
+                'position': {'x': row.get('x', 0), 'y': row.get('y', 0)},  # 防止缺少位置
+            }
+            for _, row in self.full_info.iterrows() if pd.notnull(row['node'])
+        ]
+
+        # 構建有效的邊
+        graph = vars(self.mapper_plot._MapperLayoutInteractive__graph)
+        valid_node_ids = {node['data']['id'] for node in nodes}
+        edges = [
+            {'data': {'source': str(edge[0]), 'target': str(edge[1])}}
+            for edge in graph['edges']
+            if str(edge[0]) in valid_node_ids and str(edge[1]) in valid_node_ids
+        ]
+
+        # 建立 Dash 應用
+        app = JupyterDash(__name__)
+
+        app.layout = html.Div([
+            cyto.Cytoscape(
+                id='cytoscape',
+                elements=nodes + edges,
+                layout={'name': 'fcose'},  # 基於力導向佈局
+                style={'width': '100%', 'height': '800px'},
+                stylesheet=[
+                    {
+                        'selector': 'node',
+                        'style': {
+                            'width': 'data(size)',
+                            'height': 'data(size)',
+                            'background-color': '#0074D9',
+                            'label': 'data(label)',
+                            'font-size': '12px',
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                        }
+                    },
+                    {
+                        'selector': 'edge',
+                        'style': {
+                            'width': 2,
+                            'line-color': '#A9A9A9',
+                            'curve-style': 'bezier',
+                        }
+                    }
+                ]
+            )
+        ])
+
+        app.run_server(mode="inline", debug=True, port=port)
