@@ -35,7 +35,7 @@ class MapperPlotter:
             colors=self.rbind_data['color_for_plot'].to_numpy(),
             cmap=self.cmap,
             agg=encoded_label,
-            dim=2,
+            dim=3,
             iterations=self.iterations,
             seed=self.seed,
             width=self.width,
@@ -48,7 +48,8 @@ class MapperPlotter:
     def extract_data(self):
         x = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['x']
         y = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['y']
-        threeDimData = pd.DataFrame({'x': x, 'y': y})
+        z = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['z']
+        threeDimData = pd.DataFrame({'x': x, 'y': y, 'z': z})
         
         data_tuple = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['text']
         data = []
@@ -168,57 +169,134 @@ class MapperPlotter:
         else:
             plt.show()
 
-    def plot_with_interaction(self, port=10):
-        # 構建節點
-        nodes = [
-            {
-                'data': {'id': str(row['node']), 'label': f"Node: {row['node']}", 'size': row['size']},
-                'position': {'x': row.get('x', 0), 'y': row.get('y', 0)},  # 防止缺少位置
-            }
-            for _, row in self.full_info.iterrows() if pd.notnull(row['node'])
-        ]
+    def plot_3d(self, choose, avg=None, save_path=None, set_label=False, size=100):
+        # 過濾掉無效的顏色資料
+        self.full_info = self.full_info.dropna(subset=['color_for_plot_fixed'])
 
-        # 構建有效的邊
+        clipped_size = np.clip(self.full_info['size'], None, size)
+
+        fig = plt.figure(figsize=(15, 12))
+        ax = fig.add_subplot(111, projection='3d')
+
+        if avg:
+            color = self.full_info['color']
+        else:
+            # 確保 'color_for_plot_fixed' 是有效的顏色格式
+            color = [tuple(c) if isinstance(c, (list, tuple)) else c for c in self.full_info['color_for_plot_fixed']]
+
+        scatter = ax.scatter(
+            self.full_info['x'], self.full_info['y'], self.full_info['z'],
+            c=color,
+            edgecolors='black',
+            linewidths=0.5,
+            s=clipped_size,
+            marker='o',
+            alpha=0.7
+        )
+
+        node_positions = {row['node']: (row['x'], row['y'], row['z']) for _, row in self.full_info.iterrows()}
         graph = vars(self.mapper_plot._MapperLayoutInteractive__graph)
-        valid_node_ids = {node['data']['id'] for node in nodes}
-        edges = [
-            {'data': {'source': str(edge[0]), 'target': str(edge[1])}}
-            for edge in graph['edges']
-            if str(edge[0]) in valid_node_ids and str(edge[1]) in valid_node_ids
-        ]
+        edges = graph['edges']
+        for edge in edges:
+            if edge[0] in node_positions and edge[1] in node_positions:
+                x_coords = [node_positions[edge[0]][0], node_positions[edge[1]][0]]
+                y_coords = [node_positions[edge[0]][1], node_positions[edge[1]][1]]
+                z_coords = [node_positions[edge[0]][2], node_positions[edge[1]][2]]
+                ax.plot(x_coords, y_coords, z_coords, color='grey', alpha=0.5, linewidth=0.5, zorder=0)
 
-        # 建立 Dash 應用
-        app = JupyterDash(__name__)
-
-        app.layout = html.Div([
-            cyto.Cytoscape(
-                id='cytoscape',
-                elements=nodes + edges,
-                layout={'name': 'fcose'},  # 基於力導向佈局
-                style={'width': '100%', 'height': '800px'},
-                stylesheet=[
-                    {
-                        'selector': 'node',
-                        'style': {
-                            'width': 'data(size)',
-                            'height': 'data(size)',
-                            'background-color': '#0074D9',
-                            'label': 'data(label)',
-                            'font-size': '12px',
-                            'text-valign': 'center',
-                            'text-halign': 'center',
-                        }
-                    },
-                    {
-                        'selector': 'edge',
-                        'style': {
-                            'width': 2,
-                            'line-color': '#A9A9A9',
-                            'curve-style': 'bezier',
-                        }
-                    }
+        if set_label:
+            if avg:
+                colorbar = plt.colorbar(scatter, ax=ax, orientation='vertical', pad=0.02)
+            else:
+                handles = [
+                    plt.Line2D(
+                        [0], [0],
+                        marker='o',
+                        color=self.color_palette[name],
+                        markersize=10,
+                        label=name
+                    ) for name in self.unique_categories
                 ]
-            )
-        ])
+                ax.legend(handles=handles, title=f"{choose}", loc='upper right', bbox_to_anchor=(1, 1))
 
-        app.run_server(mode="inline", debug=True, port=port)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title('Mapper 3D plot')
+
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"3D plot saved to {save_path}")
+        else:
+            plt.show()
+    
+    def plot_3d_interactive(self, choose, avg=None, save_path=None, set_label=False, size=100):
+        # 過濾掉無效的顏色資料
+        self.full_info = self.full_info.dropna(subset=['color_for_plot_fixed'])
+
+        clipped_size = np.clip(self.full_info['size'], None, size)
+
+        if avg:
+            color = self.full_info['color']
+        else:
+            # 確保 'color_for_plot_fixed' 是有效的顏色格式
+            color = [tuple(c) if isinstance(c, (list, tuple)) else c for c in self.full_info['color_for_plot_fixed']]
+
+        # 建立 3D 散點圖
+        scatter = go.Scatter3d(
+            x=self.full_info['x'],
+            y=self.full_info['y'],
+            z=self.full_info['z'],
+            mode='markers',
+            marker=dict(
+                size=clipped_size / 10,  # 將節點大小縮放以適應 Plotly
+                color=color,
+                opacity=0.8,
+                line=dict(width=0.5, color='black')
+            ),
+            text=self.full_info['node'],  # 顯示節點 ID
+            hoverinfo='text'
+        )
+
+        # 添加邊的資料
+        node_positions = {row['node']: (row['x'], row['y'], row['z']) for _, row in self.full_info.iterrows()}
+        graph = vars(self.mapper_plot._MapperLayoutInteractive__graph)
+        edges = graph['edges']
+
+        edge_traces = []
+        for edge in edges:
+            if edge[0] in node_positions and edge[1] in node_positions:
+                x_coords = [node_positions[edge[0]][0], node_positions[edge[1]][0], None]
+                y_coords = [node_positions[edge[0]][1], node_positions[edge[1]][1], None]
+                z_coords = [node_positions[edge[0]][2], node_positions[edge[1]][2], None]
+
+                edge_traces.append(
+                    go.Scatter3d(
+                        x=x_coords,
+                        y=y_coords,
+                        z=z_coords,
+                        mode='lines',
+                        line=dict(color='grey', width=2),
+                        hoverinfo='none'
+                    )
+                )
+
+        # 建立繪圖佈局
+        layout = go.Layout(
+            title='Mapper Interactive 3D Plot',
+            scene=dict(
+                xaxis_title='X',
+                yaxis_title='Y',
+                zaxis_title='Z'
+            ),
+            margin=dict(l=0, r=0, b=0, t=50),
+        )
+
+        # 合併節點和邊
+        fig = go.Figure(data=[scatter] + edge_traces, layout=layout)
+
+        if save_path:
+            fig.write_html(save_path)
+            print(f"Interactive 3D plot saved to {save_path}")
+        else:
+            fig.show()
