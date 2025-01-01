@@ -1,17 +1,11 @@
 import re
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.cm import get_cmap
 from matplotlib.font_manager import FontProperties
-from Version3.tdamapper.plot import MapperLayoutInteractive
+from tdamapper.plot import MapperLayoutInteractive
 
-import dash
-from dash import Dash, html, dcc, Input, Output
-import dash_cytoscape as cyto
-import pandas as pd
-from jupyter_dash import JupyterDash
 
 class MapperPlotter:
     def __init__(self, mapper_info, rbind_data, cmap='jet', seed=10, width=400, height=400, iterations=30):
