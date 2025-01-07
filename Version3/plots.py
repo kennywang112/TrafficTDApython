@@ -6,7 +6,6 @@ from matplotlib.cm import get_cmap
 from matplotlib.font_manager import FontProperties
 from tdamapper.plot import MapperLayoutInteractive
 
-
 class MapperPlotter:
     def __init__(self, mapper_info, rbind_data, cmap='jet', seed=10, width=400, height=400, iterations=30):
         self.mapper_info = mapper_info
@@ -48,7 +47,12 @@ class MapperPlotter:
         data_tuple = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['text']
         data = []
         for item in data_tuple:
-            color = float(re.search(r'color: ([\d.]+)', item).group(1))
+            try:
+                match = float(re.search(r'color: ([\d.-]+)', item).group(1))
+            except Exception as e:
+                match = float(re.search(r'color: ([\d.]+)', item).group(1))
+
+            color = float(match)
             node = int(re.search(r'node: (\d+)', item).group(1))
             size = int(re.search(r'size: (\d+)', item).group(1))
             data.append({'color': color, 'node': node, 'size': size})
@@ -106,12 +110,12 @@ class MapperPlotter:
 
     def plot(self, choose, avg=None, save_path=None, set_label=False, size=100):
         # 過濾掉無效的顏色資料
-        self.full_info = self.full_info.dropna(subset=['color_for_plot_fixed'])
+        # self.full_info = self.full_info.dropna(subset=['color_for_plot_fixed'])
 
         clipped_size = np.clip(self.full_info['size'], None, size)
 
         plt.figure(figsize=(15, 12))
-
+        
         if avg:
             color = self.full_info['color']
         else:
@@ -125,7 +129,7 @@ class MapperPlotter:
             linewidths=0.5,
             s=clipped_size,
             marker='o',
-            alpha=0.7
+            alpha=0.9
         )
 
         node_positions = {row['node']: (row['x'], row['y']) for _, row in self.full_info.iterrows()}
@@ -165,7 +169,7 @@ class MapperPlotter:
 
     def plot_3d(self, choose, avg=None, save_path=None, set_label=False, size=100):
         # 過濾掉無效的顏色資料
-        self.full_info = self.full_info.dropna(subset=['color_for_plot_fixed'])
+        # self.full_info = self.full_info.dropna(subset=['color_for_plot_fixed'])
 
         clipped_size = np.clip(self.full_info['size'], None, size)
 

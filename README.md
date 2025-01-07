@@ -1,8 +1,8 @@
 # Traffic severity using TDA
-[Note V1](https://hackmd.io/eP-VVAHUSvGpURoVaSmPNQ) with an initialize analysis thoughts and [Note V2](https://hackmd.io/Rjf4rmgrQrK34Tb14hDMQA) record a final version of the analyze.<br/>
-This conference paper has been include in the transportation safety section of [Chinese Institute of Transportation](https://drive.google.com/file/d/1Xwn50CmsidK9w3uSz0Jawzatufz-S2pV/view)
+[V1](https://hackmd.io/eP-VVAHUSvGpURoVaSmPNQ) with an initialize analysis thoughts and [V2](https://hackmd.io/Rjf4rmgrQrK34Tb14hDMQA) record a final version of the analyze.<br/> This conference paper has been include in the transportation safety section of [Chinese Institute of Transportation](https://drive.google.com/file/d/1Xwn50CmsidK9w3uSz0Jawzatufz-S2pV/view)<br/>
 
-## Abstract
-This research compares two levels of severity (A1 and A2) in traffic accidents using Topological Data Analysis (TDA). A1 describes accidents that include fatalities, while A2 includes only those with injuries.
 
 Note that folder **tdamapper & tests** is from [this](https://github.com/lucasimi/tda-mapper-python) package, this is for specifice use for clustering optimization.
+
+## Abstract
+In the study of traffic accident risks, driving behavior and weather conditions are often considered the primary influencing factors, but the role of road design cannot be overlooked. This research employs the Mapper algorithm from Topological Data Analysis (TDA) to analyze high-dimensional road design features, including lane configurations, road types, traffic signals, and surface conditions, to explore their association with the severity of traffic accidents. The study focuses on dissecting the process of the Mapper method, aiming to identify road design characteristics that may lead to higher fatality rates through topologically distinctive structures. Additionally, a comparison with traditional clustering methods is conducted to highlight the unique advantages of TDA in handling complex structural data. The research results show that topological data analysis can accurately capture the hidden structure in high-dimensional data. In addition to identifying road features that may lead to high mortality, it can also provide insightful explanatory models and provides new analytical perspectives and strategic reference suggestions for road safety design.
