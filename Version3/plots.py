@@ -1,7 +1,9 @@
 import re
-import pandas as pd
 import numpy as np
+import pandas as pd
+import networkx as nx
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from matplotlib.cm import get_cmap
 from matplotlib.font_manager import FontProperties
 from tdamapper.plot import MapperLayoutInteractive
@@ -18,7 +20,7 @@ class MapperPlotter:
         self.mapper_plot = None
         self.full_info = None
 
-    def create_mapper_plot(self, choose, encoded_label, avg=False):
+    def create_mapper_plot(self, choose, encoded_label, avg=False, dim=3):
         if avg:
             self.rbind_data['color_for_plot'] = self.rbind_data[choose]
         else:
@@ -28,7 +30,7 @@ class MapperPlotter:
             colors=self.rbind_data['color_for_plot'].to_numpy(),
             cmap=self.cmap,
             agg=encoded_label,
-            dim=3,
+            dim=dim,
             iterations=self.iterations,
             seed=self.seed,
             width=self.width,
@@ -68,7 +70,7 @@ class MapperPlotter:
 
         return self.full_info
 
-    def map_colors(self, choose, size=0, threshold=5, range_lst = None):
+    def map_colors(self, choose, size=0, threshold=5, range_lst=None):
         # range_lst [x_min, x_max, y_min, y_max]
         # 過濾大小的資料點
         df = self.full_info[(self.full_info['size'] > size)]
@@ -227,74 +229,105 @@ class MapperPlotter:
             print(f"3D plot saved to {save_path}")
         else:
             plt.show()
-    
-    def plot_3d_interactive(self, choose, avg=None, save_path=None, set_label=False, size=100):
-        # 過濾掉無效的顏色資料
-        self.full_info = self.full_info.dropna(subset=['color_for_plot_fixed'])
 
-        clipped_size = np.clip(self.full_info['size'], None, size)
+    def plot_3d_interactive(self, path_name='./MapperGraphs/o4i7interactive', range_lst=None, size=0):
+        
+        G = nx.Graph()
+        
+        df = self.full_info[(self.full_info['size'] > size)]
 
-        if avg:
-            color = self.full_info['color']
-        else:
-            # 確保 'color_for_plot_fixed' 是有效的顏色格式
-            color = [tuple(c) if isinstance(c, (list, tuple)) else c for c in self.full_info['color_for_plot_fixed']]
+        if range_lst is not None:
+            # 車的分析適用
+            df = df[(df['x'] > range_lst[0]) & (df['y'] < range_lst[2]) & 
+                    (df['x'] < range_lst[1]) & (df['y'] > range_lst[3])]
 
-        # 建立 3D 散點圖
-        scatter = go.Scatter3d(
-            x=self.full_info['x'],
-            y=self.full_info['y'],
-            z=self.full_info['z'],
+        # 增加節點
+        for i, row in df.iterrows():
+            G.add_node(row['node'], size=row['size'], color=row['color'])
+
+        # 增加邊
+        for i, row1 in df.iterrows():
+            for j, row2 in df.iterrows():
+                if i < j:  # 避免重複計算
+                    if set(row1['ids']).intersection(set(row2['ids'])):
+                        G.add_edge(row1['node'], row2['node'])
+
+        # 使用 NetworkX 的 spring_layout 生成力導向布局
+        pos = nx.spring_layout(G, dim=3, seed=42)
+
+        # 提取信息
+        node_x, node_y, node_z = zip(*[pos[node] for node in G.nodes()])
+        nodes = list(G.nodes(data=True))
+        node_size = [G.nodes[node]['size'] for node in G.nodes()]
+        node_color = [G.nodes[node]['color'] for node in G.nodes()]
+
+        edge_x, edge_y, edge_z = [], [], []
+        for edge in G.edges():
+            x0, y0, z0 = pos[edge[0]]
+            x1, y1, z1 = pos[edge[1]]
+            edge_x.extend([x0, x1, None])
+            edge_y.extend([y0, y1, None])
+            edge_z.extend([z0, z1, None])
+
+        # 繪製邊
+        edge_trace = go.Scatter3d(
+            x=edge_x, y=edge_y, z=edge_z,
+            mode='lines',
+            line=dict(width=0.5, color='#888'),
+            hoverinfo='none'
+        )
+
+        # 繪製節點
+        node_trace = go.Scatter3d(
+            x=node_x, y=node_y, z=node_z,
             mode='markers',
             marker=dict(
-                size=clipped_size / 10,  # 將節點大小縮放以適應 Plotly
-                color=color,
-                opacity=0.8,
-                line=dict(width=0.5, color='black')
+                size=node_size,
+                color=node_color,
+                colorscale='Viridis',
+                showscale=True
             ),
-            text=self.full_info['node'],  # 顯示節點 ID
+            text=[f'Node {node}' for node in G.nodes()],
             hoverinfo='text'
         )
 
-        # 添加邊的資料
-        node_positions = {row['node']: (row['x'], row['y'], row['z']) for _, row in self.full_info.iterrows()}
-        graph = vars(self.mapper_plot._MapperLayoutInteractive__graph)
-        edges = graph['edges']
+        fig = go.Figure(data=[edge_trace, node_trace],
+                        layout=go.Layout(
+                            title='Force-Directed Graph Based on IDs Intersection',
+                            showlegend=False,
+                            scene=dict(
+                                xaxis=dict(showbackground=False),
+                                yaxis=dict(showbackground=False),
+                                zaxis=dict(showbackground=False)
+                            )
+                        ))
 
-        edge_traces = []
-        for edge in edges:
-            if edge[0] in node_positions and edge[1] in node_positions:
-                x_coords = [node_positions[edge[0]][0], node_positions[edge[1]][0], None]
-                y_coords = [node_positions[edge[0]][1], node_positions[edge[1]][1], None]
-                z_coords = [node_positions[edge[0]][2], node_positions[edge[1]][2], None]
+        fig.write_html(f'{path_name}.html')
 
-                edge_traces.append(
-                    go.Scatter3d(
-                        x=x_coords,
-                        y=y_coords,
-                        z=z_coords,
-                        mode='lines',
-                        line=dict(color='grey', width=2),
-                        hoverinfo='none'
-                    )
-                )
+    def plot_3d_pvis(self, path_name='./MapperGraphs/o4i7interactive', range_lst=None, size=0):
 
-        # 建立繪圖佈局
-        layout = go.Layout(
-            title='Mapper Interactive 3D Plot',
-            scene=dict(
-                xaxis_title='X',
-                yaxis_title='Y',
-                zaxis_title='Z'
-            ),
-            margin=dict(l=0, r=0, b=0, t=50),
+        G = nx.Graph()
+
+        df = self.full_info[(self.full_info['size'] > size)]
+
+        if range_lst is not None:
+            df = df[(df['x'] > range_lst[0]) & (df['y'] < range_lst[2]) & 
+                    (df['x'] < range_lst[1]) & (df['y'] > range_lst[3])]
+
+        for i, row in df.iterrows():
+            G.add_node(row['node'], size=row['size'], color=row['color'])
+        for i, row1 in df.iterrows():
+            for j, row2 in df.iterrows():
+                if i < j and set(row1['ids']).intersection(set(row2['ids'])):
+                    G.add_edge(row1['node'], row2['node'])
+
+        g = net.Network(height='1500px', width='100%', heading='')
+
+        g.add_nodes(
+            [node for node in G.nodes()],
+            value=[G.nodes[node]['size'] for node in G.nodes()],
+            title=[f"Node {node}" for node in G.nodes()],
+            color=[f"rgb({255 - int(abs(G.nodes[node]['color']) * 50)}, 150, 150)" for node in G.nodes()]
         )
-
-        # 合併節點和邊
-        fig = go.Figure(data=[scatter] + edge_traces, layout=layout)
-
-        if save_path:
-            fig.write_html(save_path)
-            print(f"Interactive 3D plot saved to {save_path}")
-        else:
-            fig.show()
+        g.add_edges([(source, target) for source, target in G.edges()])
+        g.write_html(f'{path_name}.html')

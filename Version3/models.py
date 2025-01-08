@@ -41,10 +41,10 @@ def logistic_cm_gridsearch(X, y):
 
     model = LogisticRegression(solver='saga', max_iter=10000)
     parameters = {
-        'penalty': ['l2'],
+        'penalty': ['l2', 'l1'],
         'C': [0.01, 0.1, 1]
     }
-    grid_search = GridSearchCV(model, parameters, cv=5, scoring='accuracy')
+    grid_search = GridSearchCV(model, parameters, cv=5, scoring='accuracy', n_jobs=12)
     grid_search.fit(X_resampled_train, y_resampled_train)
     best_model = grid_search.best_estimator_
 
@@ -87,7 +87,7 @@ def linear_svc_cm_gridsearch(X, y):
     }
 
     # 使用 GridSearchCV 找最佳參數
-    grid_search = GridSearchCV(model, parameters, cv=10, scoring='accuracy')
+    grid_search = GridSearchCV(model, parameters, cv=10, scoring='accuracy', n_jobs=12)
     grid_search.fit(X_resampled_train, y_resampled_train)
     best_model = grid_search.best_estimator_
 
@@ -120,10 +120,10 @@ def logistic_cm_kfold(X, y, k=5):
         # Model and GridSearch
         model = LogisticRegression(solver='saga', max_iter=10000)
         parameters = {
-            'penalty': ['l2'],
-            'C': [0.01, 0.1, 1]
+            'penalty': ['l2', 'l1'],
+            'C': [0.01, 0.1, 1, 10]
         }
-        grid_search = GridSearchCV(model, parameters, cv=5, scoring='accuracy')
+        grid_search = GridSearchCV(model, parameters, cv=5, scoring='accuracy', n_jobs=12)
         grid_search.fit(X_resampled_train, y_resampled_train)
         best_model = grid_search.best_estimator_
 
@@ -142,8 +142,10 @@ def logistic_cm_kfold(X, y, k=5):
 def linear_svc_kfold(X, y, k=5):
     kf = KFold(n_splits=k, shuffle=True, random_state=42)
 
+    # 存真實以及decision score方便後續對混淆的計算以及AUC
     y_true_all = []
     decision_scores_all = []
+    # 這裡存儲的是原始資料的索引，方便後續將decision score直接對應到原始資料做拓樸
     original_indices = []
 
     for train_index, test_index in kf.split(X):
@@ -166,7 +168,7 @@ def linear_svc_kfold(X, y, k=5):
         }
 
         # 使用 GridSearchCV 找最佳參數
-        grid_search = GridSearchCV(model, parameters, cv=5, scoring='accuracy')
+        grid_search = GridSearchCV(model, parameters, cv=5, scoring='accuracy', n_jobs=12)
         grid_search.fit(X_resampled_train, y_resampled_train)
         best_model = grid_search.best_estimator_
 
@@ -181,3 +183,4 @@ def linear_svc_kfold(X, y, k=5):
         original_indices.extend(test_index)
 
     return np.array(y_true_all), np.array(decision_scores_all), np.array(original_indices)
+

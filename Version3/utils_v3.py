@@ -168,8 +168,7 @@ def downsample_by_month_simple(A1, A2, sampling_ratio, total_ratio):
         # 計算該月份目標數量
         A1_target = int(len(A1_month) * sampling_ratio)
         A2_target = int(A1_target / total_ratio)
-        print(A1_target)
-        print(A2_target)
+        print(A1_target, A2_target)
 
         # 下採樣
         A1_sampled = resample(A1_month, replace=False, n_samples=A1_target, random_state=42)
