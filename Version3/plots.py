@@ -3,9 +3,9 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
+from pyvis import network as net
 import plotly.graph_objects as go
 from matplotlib.cm import get_cmap
-from matplotlib.font_manager import FontProperties
 from tdamapper.plot import MapperLayoutInteractive
 
 class MapperPlotter:
@@ -330,4 +330,26 @@ class MapperPlotter:
             color=[f"rgb({255 - int(abs(G.nodes[node]['color']) * 50)}, 150, 150)" for node in G.nodes()]
         )
         g.add_edges([(source, target) for source, target in G.edges()])
+        g.set_options("""
+        var options = {
+            "physics": {
+                "stabilization": {
+                "enabled": true,
+                "iterations": 200
+                },
+                "barnesHut": {
+                "gravitationalConstant": -2000,
+                "centralGravity": 0.01,
+                "springLength": 100,
+                "springConstant": 0.04,
+                "damping": 0.5
+                },
+                "minVelocity": 0.5
+                },
+            "background": {
+                "color": "black"
+            }
+            }
+        """)
+
         g.write_html(f'{path_name}.html')
