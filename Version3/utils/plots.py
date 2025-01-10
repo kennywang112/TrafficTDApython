@@ -230,80 +230,6 @@ class MapperPlotter:
         else:
             plt.show()
 
-    def plot_3d_interactive(self, path_name='./MapperGraphs/o4i7interactive', range_lst=None, size=0):
-        
-        G = nx.Graph()
-        
-        df = self.full_info[(self.full_info['size'] > size)]
-
-        if range_lst is not None:
-            # 車的分析適用
-            df = df[(df['x'] > range_lst[0]) & (df['y'] < range_lst[2]) & 
-                    (df['x'] < range_lst[1]) & (df['y'] > range_lst[3])]
-
-        # 增加節點
-        for i, row in df.iterrows():
-            G.add_node(row['node'], size=row['size'], color=row['color'])
-
-        # 增加邊
-        for i, row1 in df.iterrows():
-            for j, row2 in df.iterrows():
-                if i < j:  # 避免重複計算
-                    if set(row1['ids']).intersection(set(row2['ids'])):
-                        G.add_edge(row1['node'], row2['node'])
-
-        # 使用 NetworkX 的 spring_layout 生成力導向布局
-        pos = nx.spring_layout(G, dim=3, seed=42)
-
-        # 提取信息
-        node_x, node_y, node_z = zip(*[pos[node] for node in G.nodes()])
-        nodes = list(G.nodes(data=True))
-        node_size = [G.nodes[node]['size'] for node in G.nodes()]
-        node_color = [G.nodes[node]['color'] for node in G.nodes()]
-
-        edge_x, edge_y, edge_z = [], [], []
-        for edge in G.edges():
-            x0, y0, z0 = pos[edge[0]]
-            x1, y1, z1 = pos[edge[1]]
-            edge_x.extend([x0, x1, None])
-            edge_y.extend([y0, y1, None])
-            edge_z.extend([z0, z1, None])
-
-        # 繪製邊
-        edge_trace = go.Scatter3d(
-            x=edge_x, y=edge_y, z=edge_z,
-            mode='lines',
-            line=dict(width=0.5, color='#888'),
-            hoverinfo='none'
-        )
-
-        # 繪製節點
-        node_trace = go.Scatter3d(
-            x=node_x, y=node_y, z=node_z,
-            mode='markers',
-            marker=dict(
-                size=node_size,
-                color=node_color,
-                colorscale='Viridis',
-                showscale=True
-            ),
-            text=[f'Node {node}' for node in G.nodes()],
-            hoverinfo='text'
-        )
-
-        fig = go.Figure(data=[edge_trace, node_trace],
-                        layout=go.Layout(
-                            title='Force-Directed Graph Based on IDs Intersection',
-                            showlegend=False,
-                            scene=dict(
-                                xaxis=dict(showbackground=False),
-                                yaxis=dict(showbackground=False),
-                                zaxis=dict(showbackground=False)
-                            )
-                        ))
-
-        fig.write_html(f'{path_name}.html')
-
     def plot_3d_pvis(self, path_name='./MapperGraphs/o4i7interactive', range_lst=None, size=0):
 
         G = nx.Graph()
@@ -353,3 +279,4 @@ class MapperPlotter:
         """)
 
         g.write_html(f'{path_name}.html')
+
