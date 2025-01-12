@@ -41,8 +41,10 @@ def logistic_cm_gridsearch(X, y):
 
     model = LogisticRegression(solver='saga', max_iter=10000)
     parameters = {
+        # l2為Ridge，l1為Lasso，l1會將不重要的特徵權重變為0，l2不會
         'penalty': ['l2', 'l1'],
-        'C': [0.01, 0.1, 1]
+        # 大C傾向完全擬和，可能導致過擬和；小C傾向正則化，可能增加訓練誤差但增加泛化能力
+        'C': [0.01, 0.1, 1, 10]
     }
     grid_search = GridSearchCV(model, parameters, cv=5, scoring='accuracy', n_jobs=12)
     grid_search.fit(X_resampled_train, y_resampled_train)
@@ -119,11 +121,12 @@ def logistic_cm_kfold(X, y, k=5):
 
         # Model and GridSearch
         model = LogisticRegression(solver='saga', max_iter=10000)
+        # 超參數範圍
         parameters = {
-            # l2為Ridge，l1為Lasso，l1會將不重要的特徵權重變為0，l2不會
-            'penalty': ['l2', 'l1'],
             # 大C傾向完全擬和，可能導致過擬和；小C傾向正則化，可能增加訓練誤差但增加泛化能力
-            'C': [0.01, 0.1, 1, 10]
+            'C': [0.1, 1, 10, 100],
+            # 目標是最大化分類邊界的距離，hinge是線性SVM的損失函數，squared_hinge是hinge的平方
+            'loss': ['hinge', 'squared_hinge']
         }
         grid_search = GridSearchCV(model, parameters, cv=5, scoring='accuracy', n_jobs=12)
         grid_search.fit(X_resampled_train, y_resampled_train)

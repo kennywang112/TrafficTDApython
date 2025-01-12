@@ -70,12 +70,16 @@ class CustomDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(self.val_data, batch_size=self.batch_size)
     
-dm = CustomDataModule(car_motor_outlier_overlap_X.to_numpy(), car_motor_outlier_overlap_y.to_numpy(), batch_size=16)
+# Usage
+# from utils.NNlogistic import LogisticRegression, CustomDataModule
+# import pytorch_lightning as pl
 
-input_dim = car_motor_outlier_overlap_X.shape[1]
+# dm = CustomDataModule(full_data_X.to_numpy(), full_data_y.to_numpy(), batch_size=16)
 
-model = LogisticRegression(input_dim=input_dim, num_classes=2)
+# input_dim = full_data_X.shape[1]
 
-trainer = pl.Trainer(max_epochs=10, accelerator="gpu", devices=1)
+# model = LogisticRegression(input_dim=input_dim, num_classes=2)
 
-trainer.fit(model, datamodule=dm)
+# trainer = pl.Trainer(max_epochs=10, accelerator="gpu", devices=1)
+
+# trainer.fit(model, datamodule=dm)
