@@ -4,6 +4,8 @@ from sklearn.metrics import roc_curve, auc, confusion_matrix, recall_score, clas
 
 def get_optimal_threshold(y_true, decision_scores):
     fpr, tpr, thresholds = roc_curve(y_true, decision_scores)
+    # 下方樣本準確-上方樣本準確，最大值為最佳閾值，即youden index
+    # 這樣的閾值可以使得偽陽性率最低，真陽性率最高
     youden_j = tpr - fpr
     optimal_idx = np.argmax(youden_j)
     optimal_threshold = thresholds[optimal_idx]
