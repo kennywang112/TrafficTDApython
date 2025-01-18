@@ -2,14 +2,16 @@ import re
 import numpy as np
 import pandas as pd
 import networkx as nx
+import seaborn as sns
 import matplotlib.pyplot as plt
 from pyvis import network as net
 import plotly.graph_objects as go
 from matplotlib.cm import get_cmap
+from scipy.stats import gaussian_kde
 from tdamapper.plot import MapperLayoutInteractive
 
 class MapperPlotter:
-    def __init__(self, mapper_info, rbind_data, cmap='jet', seed=10, width=400, height=400, iterations=30):
+    def __init__(self, mapper_info, rbind_data, cmap='jet', seed=10, width=400, height=400, iterations=30, dim=3, range_lst=None):
         self.mapper_info = mapper_info
         self.rbind_data = rbind_data
         self.cmap = cmap
@@ -19,10 +21,12 @@ class MapperPlotter:
         self.height = height
         self.mapper_plot = None
         self.full_info = None
+        self.dim = dim
+        self.range_lst = range_lst
 
-    def create_mapper_plot(self, choose, encoded_label, avg=False, dim=3):
+    def create_mapper_plot(self, choose, encoded_label, avg=False):
         if avg:
-            self.rbind_data['color_for_plot'] = self.rbind_data[choose]
+            self.rbind_data['color_for_plot'] = self.rbind_data[choose].astype(float)
         else:
             self.rbind_data['color_for_plot'] = pd.factorize(self.rbind_data[choose])[0]
         self.mapper_plot = MapperLayoutInteractive(
@@ -30,7 +34,7 @@ class MapperPlotter:
             colors=self.rbind_data['color_for_plot'].to_numpy(),
             cmap=self.cmap,
             agg=encoded_label,
-            dim=dim,
+            dim=self.dim,
             iterations=self.iterations,
             seed=self.seed,
             width=self.width,
@@ -43,8 +47,11 @@ class MapperPlotter:
     def extract_data(self):
         x = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['x']
         y = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['y']
-        z = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['z']
-        threeDimData = pd.DataFrame({'x': x, 'y': y, 'z': z})
+        if self.dim==3:
+            z = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['z']
+            threeDimData = pd.DataFrame({'x': x, 'y': y, 'z': z})
+        else:
+            threeDimData = pd.DataFrame({'x': x, 'y': y})
         
         data_tuple = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['text']
         data = []
@@ -66,18 +73,20 @@ class MapperPlotter:
         mp_content.rename(columns={'index': 'node'}, inplace=True)
         
         self.full_info = pd.merge(self.full_info, mp_content, on=['node', 'size'], how='inner')
+        self.full_info["ratio"] = self.full_info["color"] / self.full_info["size"]
         print("Data extracted.")
 
         return self.full_info
 
-    def map_colors(self, choose, size=0, threshold=5, range_lst=None):
+    def map_colors(self, choose, size=0, threshold=5):
         # range_lst [x_min, x_max, y_min, y_max]
         # 過濾大小的資料點
         df = self.full_info[(self.full_info['size'] > size)]
 
-        if range_lst is not None:
+        if self.range_lst is not None:
             # 車的分析適用
-            df = df[(df['x'] > range_lst[0]) & (df['y'] < range_lst[2]) & (df['x'] < range_lst[1]) & (df['y'] > range_lst[3])]
+            df = df[(df['x'] > self.range_lst[0]) & (df['y'] < self.range_lst[2]) & 
+                    (df['x'] < self.range_lst[1]) & (df['y'] > self.range_lst[3])]
         # 計算每個標籤的出現次數
         category_counts = self.rbind_data[choose].value_counts()
 
@@ -162,6 +171,105 @@ class MapperPlotter:
         plt.ylabel('Y')
         plt.title('Mapper plot')
         plt.grid(True)
+
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"Plot saved to {save_path}")
+        else:
+            plt.show()
+    
+    def plot_dens(self, choose, avg=None, save_path=None, set_label=False, size=100, minimum_lst=None):
+        clipped_size = np.clip(self.full_info['size'], None, size)
+
+        fig, ax = plt.subplots(2, 1, figsize=(15, 12), gridspec_kw={'height_ratios': [4, 1], 'hspace': 0})
+        
+        if avg:
+            color = self.full_info['color']
+        else:
+            color = [tuple(c) if isinstance(c, (list, tuple)) else c for c in self.full_info['color_for_plot_fixed']]
+
+        # 拓樸圖
+        scatter = ax[0].scatter(
+            self.full_info['x'], self.full_info['y'],
+            c=color,
+            edgecolors='black',
+            linewidths=0.5,
+            s=clipped_size,
+            marker='o',
+            alpha=0.9
+        )
+
+        node_positions = {row['node']: (row['x'], row['y']) for _, row in self.full_info.iterrows()}
+        graph = vars(self.mapper_plot._MapperLayoutInteractive__graph)
+        edges = graph['edges']
+        for edge in edges:
+            if edge[0] in node_positions and edge[1] in node_positions:
+                x_coords = [node_positions[edge[0]][0], node_positions[edge[1]][0]]
+                y_coords = [node_positions[edge[0]][1], node_positions[edge[1]][1]]
+                ax[0].plot(x_coords, y_coords, color='grey', alpha=0.5, linewidth=0.5, zorder=0)
+
+        if set_label:
+            if avg:
+                colorbar = plt.colorbar(scatter, ax=ax[0], orientation='vertical', pad=0.02)
+            else:
+                handles = [
+                    plt.Line2D(
+                        [0], [0],
+                        marker='o',
+                        color=self.color_palette[name],
+                        markersize=10,
+                        label=name
+                    ) for name in self.unique_categories
+                ]
+                ax[0].legend(handles=handles, title=f"{choose}", loc='upper right', bbox_to_anchor=(1, 1))
+
+        ticks = np.arange(self.range_lst[0], self.range_lst[1] + 0.025, 0.025)
+        x_min, x_max = self.full_info["x"].min(), self.full_info["x"].max()
+        
+        ax[0].set_xlabel('')
+        ax[0].set_ylabel('Y')
+        ax[0].set_title('Mapper plot')
+        ax[0].grid(True)
+        ax[0].set_xlim(x_min, x_max)
+        ax[0].set_xticks(ticks)
+        ax[0].tick_params(axis='x', labelbottom=False)  # 隱藏第一張圖的 x 軸刻度標籤 
+
+        # filter full_info['x'] by minimum_lst
+        if minimum_lst:
+            filtered_full_info = self.full_info[
+                    (self.full_info['x'] > minimum_lst[0]) & 
+                    (self.full_info['x'] < minimum_lst[1])
+                ]
+            
+        # 計算 KDE 密度值
+        x_vals = np.linspace(minimum_lst[0], minimum_lst[1], 1000)
+        # kde = gaussian_kde(self.full_info["x"], weights=self.full_info["ratio"], bw_method=0.3)
+        kde = gaussian_kde(filtered_full_info["x"], weights=filtered_full_info["ratio"], bw_method=0.3)
+        kde_vals = kde(x_vals)
+        # 找到最低點
+        min_idx = np.argmin(kde_vals)
+        min_x = x_vals[min_idx]
+        min_y = kde_vals[min_idx]
+        
+        # densityplot
+        sns.kdeplot(
+            x=self.full_info["x"], 
+            weights=self.full_info["ratio"], 
+            fill=True, 
+            cmap="viridis", 
+            ax=ax[1],
+            bw_adjust=.3
+        )        
+        if minimum_lst:
+            ax[1].scatter(min_x, min_y, color='red', label=f"Minimum: ({min_x:.4f}, {min_y:.4f})", zorder=5)
+            ax[1].legend()
+        ax[1].set_xlabel("X")
+        ax[1].set_ylabel("Density")
+        ax[1].grid(True)
+        ax[1].set_xlim(x_min, x_max)
+        ax[1].set_xticks(ticks)
+
+        plt.tight_layout()
 
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')

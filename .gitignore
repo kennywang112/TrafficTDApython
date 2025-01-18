@@ -1,10 +1,16 @@
 .ipynb_checkpoints
-Data
-Ref
-CalculatedData/*
+.Rproj.user
 __pycache__
-.ipynb
+Ref
+lib
+Data
+React
+SpatialTemporal
+CalculatedData/*
 config.py
+
+Version1/Data
+
 Version3/GridSearch
 Version3/Calculated
 Version3/Component6Undersample
@@ -23,8 +29,11 @@ Version3/Component11Pass
 Version3/Component15Car
 Version3/Map
 Version3/Plots
-lib
-React
-.Rproj.user
-SpatialTemporal
 
+Version4/GridSearch
+Version4/Component8Car
+Version4/Component9Motor
+Version4/Data
+
+ForMatrix/Output
+ForMatrix/CalculatedData
