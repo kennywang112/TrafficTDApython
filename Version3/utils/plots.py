@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 import seaborn as sns
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 from pyvis import network as net
 import plotly.graph_objects as go
@@ -240,10 +241,11 @@ class MapperPlotter:
                     (self.full_info['x'] > minimum_lst[0]) & 
                     (self.full_info['x'] < minimum_lst[1])
                 ]
-            
-        # 計算 KDE 密度值
-        x_vals = np.linspace(minimum_lst[0], minimum_lst[1], 1000)
-        # kde = gaussian_kde(self.full_info["x"], weights=self.full_info["ratio"], bw_method=0.3)
+            x_vals = np.linspace(minimum_lst[0], minimum_lst[1], 1000)
+        else:
+            filtered_full_info = self.full_info
+            x_vals = np.linspace(x_min, x_max, 1000)
+
         kde = gaussian_kde(filtered_full_info["x"], weights=filtered_full_info["ratio"], bw_method=0.3)
         kde_vals = kde(x_vals)
         # 找到最低點
@@ -388,3 +390,52 @@ class MapperPlotter:
 
         g.write_html(f'{path_name}.html')
 
+def plot_mca(mca, data):
+
+    col_coordinate = mca.column_coordinates(data)
+
+    col_coordinate['dummy_index'] = range(len(col_coordinate))  # 為每個欄位分配索引
+
+    # Normalize the 'dummy_index' for mapping to colormap
+    norm = plt.Normalize(vmin=col_coordinate['dummy_index'].min(), vmax=col_coordinate['dummy_index'].max())
+    cmap = cm.viridis  # 選擇漸層色盤，例如 viridis, plasma, inferno 等
+
+    plt.figure(figsize=(20, 12))
+    plt.gca().set_facecolor('white')
+
+    # 繪製散點圖，顏色根據 dummy_index 映射
+    scatter = plt.scatter(
+        col_coordinate[0],  # X coordinate
+        col_coordinate[1],  # Y coordinate
+        c=col_coordinate['dummy_index'],  # 使用索引作為顏色映射
+        cmap=cmap,
+        alpha=0.7
+    )
+
+    # Adding labels with colors matching the scatter plot
+    offset = 0.15
+    for i, label in enumerate(col_coordinate.index):
+        plt.text(
+            col_coordinate.iloc[i, 0],  # X coordinate
+            col_coordinate.iloc[i, 1] + offset,  # Y coordinate
+            str(label),  # 假設 label 包含中文
+            fontsize=10,
+            ha='center', 
+            va='center',
+            color=cmap(norm(col_coordinate.iloc[i]['dummy_index'])),  # 文字顏色與點顏色一致
+            # rotation=30
+        )
+
+    # Add colorbar
+    # cbar = plt.colorbar(scatter)
+    # cbar.set_label("Field Index (Gradient)", fontsize=12)
+
+    # Axes lines and grid
+    plt.axhline(0, color='grey', linestyle='--', linewidth=0.5)
+    plt.axvline(0, color='grey', linestyle='--', linewidth=0.5)
+    # plt.title("MCA", fontsize=16)
+    plt.xlabel("Dimension 1", fontsize=12)
+    plt.ylabel("Dimension 2", fontsize=12)
+    plt.grid(True)
+
+    plt.show()
