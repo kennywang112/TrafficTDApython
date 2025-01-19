@@ -36,4 +36,4 @@ Version4/Component9Motor
 Version4/Data
 
 ForMatrix/Output
-ForMatrix/CalculatedData
+ForMatrix/CalculatedData"*.png" 
