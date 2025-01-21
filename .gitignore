@@ -8,7 +8,6 @@ React
 SpatialTemporal
 CalculatedData/*
 config.py
-"*.png"
 
 Version1/Data
 
@@ -38,3 +37,4 @@ Version4/Data
 
 ForMatrix/Output
 ForMatrix/CalculatedData
+ForMatrix/Plot
