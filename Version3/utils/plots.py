@@ -80,20 +80,18 @@ class MapperPlotter:
         return self.full_info
 
     def map_colors(self, choose, size=0, threshold=5):
-        # range_lst [x_min, x_max, y_min, y_max]
+
         # 過濾大小的資料點
         df = self.full_info[(self.full_info['size'] > size)]
 
         if self.range_lst is not None:
-            # 車的分析適用
             df = df[(df['x'] > self.range_lst[0]) & (df['y'] < self.range_lst[2]) & 
                     (df['x'] < self.range_lst[1]) & (df['y'] > self.range_lst[3])]
+
         # 計算每個標籤的出現次數
         category_counts = self.rbind_data[choose].value_counts()
-
         # 篩選出現次數大於 threshold 的標籤
         filtered_categories = category_counts[category_counts > threshold].index
-
         # 取得唯一值並過濾不需要的類別
         unique_values = self.rbind_data.reset_index()[[choose, 'color_for_plot']].drop_duplicates()
         unique_values = unique_values[unique_values[choose].isin(filtered_categories)]
@@ -115,6 +113,12 @@ class MapperPlotter:
             else:
                 df['color_for_plot_fixed'] = df[choose].astype(str).map(color_mapping_fixed)
 
+        # 為threshold過濾掉的類別設定默認顏色
+        default_color = (0.5, 0.5, 0.5, 1) 
+        df['color_for_plot_fixed'] = df['color_for_plot_fixed'].apply(
+            lambda x: x if pd.notna(x) else default_color
+        )
+
         self.full_info = df
         self.color_palette = color_mapping_fixed
         self.unique_categories = unique_categories  # 保存篩選後的 categories
@@ -122,9 +126,8 @@ class MapperPlotter:
 
     def plot(self, choose, avg=None, save_path=None, set_label=False, size=100):
         # 過濾掉無效的顏色資料
-        # self.full_info = self.full_info.dropna(subset=['color_for_plot_fixed'])
-
-        clipped_size = np.clip(self.full_info['size'], None, size)
+        valid_data = self.full_info.dropna(subset=['color_for_plot_fixed'])
+        clipped_size = np.clip(valid_data['size'], None, size)
 
         plt.figure(figsize=(15, 12))
         
@@ -132,7 +135,7 @@ class MapperPlotter:
             color = self.full_info['color']
         else:
             # 確保 'color_for_plot_fixed' 是有效的顏色格式
-            color = [tuple(c) if isinstance(c, (list, tuple)) else c for c in self.full_info['color_for_plot_fixed']]
+            color = [tuple(c) if isinstance(c, (list, tuple)) else c for c in valid_data['color_for_plot_fixed']]
 
         scatter = plt.scatter(
             self.full_info['x'], self.full_info['y'],
@@ -178,16 +181,15 @@ class MapperPlotter:
             print(f"Plot saved to {save_path}")
         else:
             plt.show()
-    
-    def plot_dens(self, choose, avg=None, save_path=None, set_label=False, size=100, minimum_lst=None):
-        clipped_size = np.clip(self.full_info['size'], None, size)
 
+    def plot_dens(self, choose, avg=None, save_path=None, set_label=False, size=100, minimum_lst=None):
+
+        clipped_size = np.clip(self.full_info['size'], None, size)
         fig, ax = plt.subplots(2, 1, figsize=(15, 12), gridspec_kw={'height_ratios': [4, 1], 'hspace': 0})
-        
-        if avg:
-            color = self.full_info['color']
-        else:
-            color = [tuple(c) if isinstance(c, (list, tuple)) else c for c in self.full_info['color_for_plot_fixed']]
+        color = self.full_info['color'] if avg else [tuple(c) if isinstance(c, (list, tuple)) else c for c in self.full_info['color_for_plot_fixed']]
+        # 為了讓兩個圖的 x 軸刻度標籤一致，固定刻度範圍
+        ticks = np.arange(self.range_lst[0], self.range_lst[1] + 0.025, 0.025)
+        x_min, x_max = self.full_info["x"].min(), self.full_info["x"].max()
 
         # 拓樸圖
         scatter = ax[0].scatter(
@@ -223,9 +225,6 @@ class MapperPlotter:
                     ) for name in self.unique_categories
                 ]
                 ax[0].legend(handles=handles, title=f"{choose}", loc='upper right', bbox_to_anchor=(1, 1))
-
-        ticks = np.arange(self.range_lst[0], self.range_lst[1] + 0.025, 0.025)
-        x_min, x_max = self.full_info["x"].min(), self.full_info["x"].max()
         
         ax[0].set_xlabel('')
         ax[0].set_ylabel('Y')
@@ -235,36 +234,34 @@ class MapperPlotter:
         ax[0].set_xticks(ticks)
         ax[0].tick_params(axis='x', labelbottom=False)  # 隱藏第一張圖的 x 軸刻度標籤 
 
-        # filter full_info['x'] by minimum_lst
+        # 透過minimum_lst篩選 full_info['x']，如果篩選資料太少，會無法計算kde
         if minimum_lst:
-            filtered_full_info = self.full_info[
-                    (self.full_info['x'] > minimum_lst[0]) & 
-                    (self.full_info['x'] < minimum_lst[1])
-                ]
-            x_vals = np.linspace(minimum_lst[0], minimum_lst[1], 1000)
+            filtered_full_info = self.full_info[(self.full_info['x'] > minimum_lst[0]) & (self.full_info['x'] < minimum_lst[1])]
+            x_vals = np.linspace(minimum_lst[0], minimum_lst[1], 2000)
         else:
             filtered_full_info = self.full_info
-            x_vals = np.linspace(x_min, x_max, 1000)
+            x_vals = np.linspace(self.range_lst[0], self.range_lst[1], 2000)
 
         kde = gaussian_kde(filtered_full_info["x"], weights=filtered_full_info["ratio"], bw_method=0.3)
         kde_vals = kde(x_vals)
-        # 找到最低點
         min_idx = np.argmin(kde_vals)
         min_x = x_vals[min_idx]
         min_y = kde_vals[min_idx]
         
+        ax[0].axvline(x=min_x, color='#598e9c', linestyle='--', label=f"x={min_x:.4f}")
+        
         # densityplot
         sns.kdeplot(
-            x=self.full_info["x"], 
-            weights=self.full_info["ratio"], 
+            x=filtered_full_info["x"], 
+            weights=filtered_full_info["ratio"], 
             fill=True, 
             cmap="viridis", 
             ax=ax[1],
             bw_adjust=.3
-        )        
-        if minimum_lst:
-            ax[1].scatter(min_x, min_y, color='red', label=f"Minimum: ({min_x:.4f}, {min_y:.4f})", zorder=5)
-            ax[1].legend()
+        )
+        
+        ax[1].axvline(x=min_x, color='#598e9c', linestyle='--', label=f"x={min_x:.4f}")
+        ax[1].legend()
         ax[1].set_xlabel("X")
         ax[1].set_ylabel("Density")
         ax[1].grid(True)
