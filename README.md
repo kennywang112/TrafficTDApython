@@ -1,5 +1,7 @@
 # Traffic severity using TDA
-[V1](https://hackmd.io/eP-VVAHUSvGpURoVaSmPNQ) with an initialize analysis thoughts and [V2](https://hackmd.io/Rjf4rmgrQrK34Tb14hDMQA) record a final version of the analyze.<br/> This conference paper has been include in the transportation safety section of [Chinese Institute of Transportation](https://drive.google.com/file/d/1Xwn50CmsidK9w3uSz0Jawzatufz-S2pV/view)<br/>
+folder **Version1** with an initialize analysis thoughts and **Version2** record a final version of the analyze.<br/> This conference paper has been include in the transportation safety section of [Chinese Institute of Transportation](https://drive.google.com/file/d/1Xwn50CmsidK9w3uSz0Jawzatufz-S2pV/view)<br/>
+**Version3** includes an improved analysis for traffic data. Since PCA isn't applicable for labeled data, therefore, Multiple correspondence analysis (MCA) has been introduced as the primary improvement. Additionally, analytical methods have been applied to Mapper for enhanced analysis. This version has been submitted to the National Science and Technology Council (R.O.C) and is currently under review. <br/>
+**Version4** builds on Version3 but introduces a refinement by splitting the "Driver" category into "Car" and "Motor."
 
 
 Note that folder **tdamapper & tests** is from [this](https://github.com/lucasimi/tda-mapper-python) package, this is for specifice use for clustering optimization.

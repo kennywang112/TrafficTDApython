@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 from matplotlib.cm import get_cmap
 from scipy.stats import gaussian_kde
 from tdamapper.plot import MapperLayoutInteractive
+from utils.utils_v3 import rotate_x, rotate_y, rotate_z
 
 class MapperPlotter:
     def __init__(self, mapper_info, rbind_data, cmap='jet', seed=10, width=400, height=400, iterations=30, dim=3, range_lst=None):
@@ -45,7 +46,7 @@ class MapperPlotter:
 
         return self.mapper_plot
 
-    def extract_data(self):
+    def extract_data(self, rx=False, ry=False, rz=False):
         x = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['x']
         y = vars(self.mapper_plot._MapperLayoutInteractive__fig)['_data_objs'][1]['y']
         if self.dim==3:
@@ -76,6 +77,13 @@ class MapperPlotter:
         self.full_info = pd.merge(self.full_info, mp_content, on=['node', 'size'], how='inner')
         self.full_info["ratio"] = self.full_info["color"] / self.full_info["size"]
         print("Data extracted.")
+        
+        if rx:
+            self.full_info[['x', 'y', 'z']] = rotate_x(self.full_info[['x', 'y', 'z']].to_numpy(), rx)
+        if ry:
+            self.full_info[['x', 'y', 'z']] = rotate_y(self.full_info[['x', 'y', 'z']].to_numpy(), ry)
+        if rz:
+            self.full_info[['x', 'y', 'z']] = rotate_z(self.full_info[['x', 'y', 'z']].to_numpy(), rz)
 
         return self.full_info
 
@@ -236,24 +244,21 @@ class MapperPlotter:
 
         # 透過minimum_lst篩選 full_info['x']，如果篩選資料太少，會無法計算kde
         if minimum_lst:
-            filtered_full_info = self.full_info[(self.full_info['x'] > minimum_lst[0]) & (self.full_info['x'] < minimum_lst[1])]
             x_vals = np.linspace(minimum_lst[0], minimum_lst[1], 2000)
         else:
-            filtered_full_info = self.full_info
             x_vals = np.linspace(self.range_lst[0], self.range_lst[1], 2000)
 
-        kde = gaussian_kde(filtered_full_info["x"], weights=filtered_full_info["ratio"], bw_method=0.3)
+        kde = gaussian_kde(self.full_info["x"], weights=self.full_info["ratio"], bw_method=0.3)
         kde_vals = kde(x_vals)
         min_idx = np.argmin(kde_vals)
         min_x = x_vals[min_idx]
-        min_y = kde_vals[min_idx]
         
         ax[0].axvline(x=min_x, color='#598e9c', linestyle='--', label=f"x={min_x:.4f}")
         
         # densityplot
         sns.kdeplot(
-            x=filtered_full_info["x"], 
-            weights=filtered_full_info["ratio"], 
+            x=self.full_info["x"], 
+            weights=self.full_info["ratio"], 
             fill=True, 
             cmap="viridis", 
             ax=ax[1],

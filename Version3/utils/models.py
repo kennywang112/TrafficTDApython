@@ -14,7 +14,7 @@ from sklearn.svm import LinearSVC
 def get_train_test_data(input_data):
     input_data['y'] = input_data['死亡'].apply(lambda x: 1 if x >= 1 else 0)
     
-    new_input_data = input_data.drop(columns=['受傷', '死亡'], inplace=False)
+    new_input_data = input_data.drop(columns=['死亡'], inplace=False)
     
     X = new_input_data.drop(columns=['y'])
     y = new_input_data['y']
@@ -169,7 +169,7 @@ def linear_svc_kfold(X, y, k=5, random_state=42, n_jobs=12):
         # 超參數範圍
         parameters = {
             # 大C傾向完全擬和，可能導致過擬和；小C傾向正則化，可能增加訓練誤差但增加泛化能力
-            'C': [0.1, 1, 10, 100],
+            'C': [0.01, 0.1, 1, 10, 10],
             # 目標是最大化分類邊界的距離，hinge是線性SVM的損失函數，squared_hinge是hinge的平方
             'loss': ['hinge', 'squared_hinge']
         }
