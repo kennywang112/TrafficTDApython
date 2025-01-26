@@ -95,3 +95,33 @@ def rotate_y(points, theta):
     # 點雲與旋轉矩陣相乘
     rotated_points = np.dot(points, rotation_matrix.T)
     return rotated_points
+
+# Polygon 使用
+def update_outliers(label_0, label_0_outliers, label_1, label_1_outliers, label_out):
+    # 檢查 label_0_outliers 是否在 label_1 中有連接
+    for idx, row in label_0_outliers.iterrows():
+        connected = False
+        for _, row1 in label_1.iterrows():
+            if set(row["ids"]) & set(row1["ids"]): # 交集
+                connected = True
+                break
+        if connected:
+            # 從 label_0_outliers 移除，并添加到 label_0
+            label_0_outliers = label_0_outliers.drop(idx)
+            label_0 = pd.concat([label_0, pd.DataFrame([row])], ignore_index=True)
+
+    # 檢查 label_1_outliers 是否在 label_0 中有連接
+    for idx, row in label_1_outliers.iterrows():
+        connected = False
+        for _, row0 in label_0.iterrows():
+            if set(row["ids"]) & set(row0["ids"]): # 交集
+                connected = True
+                break
+        if connected:
+            # 從 label_1_outliers 移除，并添加到 label_1
+            label_1_outliers = label_1_outliers.drop(idx)
+            label_1 = pd.concat([label_1, pd.DataFrame([row])], ignore_index=True)
+            
+    outliers = pd.concat([label_out, label_0_outliers, label_1_outliers], ignore_index=True)
+
+    return label_0, label_1, outliers
