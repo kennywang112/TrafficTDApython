@@ -145,6 +145,9 @@ def preprocess(input_data, target, lst=False):
         full_data = full_data[(full_data['行動電話或電腦或其他相類功能裝置名稱'] != '未紀錄') &
                     (full_data['行動電話或電腦或其他相類功能裝置名稱'] != '不明')]
 
+    elif target=='全部':
+        pass
+        
     return full_data
 
 def process_other(A1, A2, downsample=False):

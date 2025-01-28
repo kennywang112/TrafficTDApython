@@ -10,6 +10,7 @@ from imblearn.over_sampling import RandomOverSampler, SMOTE
 from imblearn.under_sampling import EditedNearestNeighbours, RandomUnderSampler
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.svm import LinearSVC
+from xgboost import XGBClassifier
 
 def get_train_test_data(input_data):
     input_data['y'] = input_data['死亡'].apply(lambda x: 1 if x >= 1 else 0)
@@ -90,6 +91,35 @@ def linear_svc_cm_gridsearch(X, y, random_state=42, n_jobs=12):
 
     # 返回與其他函数一致的输出格式
     return y_resampled_test, decision_scores, np.arange(len(y_resampled_test))
+
+def xgboost_cm_gridsearch(X, y, random_state=42, n_jobs=12):
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=random_state)
+
+    smote = SMOTE(random_state=random_state, k_neighbors=3)
+    enn = EditedNearestNeighbours(n_neighbors=3)
+    smote_enn = SMOTEENN(smote=smote, enn=enn, random_state=random_state)
+    X_resampled_train, y_resampled_train = smote_enn.fit_resample(X_train, y_train)
+
+    min_class_count = min(sum(y_test == 0), sum(y_test == 1))
+    rus_test = RandomUnderSampler(sampling_strategy={0: min_class_count, 1: min_class_count}, random_state=random_state)
+    X_resampled_test, y_resampled_test = rus_test.fit_resample(X_test, y_test)
+
+    model = XGBClassifier(eval_metric='logloss', random_state=random_state)
+    parameters = {
+        'n_estimators': [50, 100, 200], # 樹的数量
+        'max_depth': [3, 5, 7],
+        'learning_rate': [0.01, 0.1, 0.2],
+        'colsample_bytree': [0.8, 1.0],  # 每棵樹使用的特征采样比例
+    }
+    grid_search = GridSearchCV(model, parameters, cv=5, scoring='accuracy', n_jobs=n_jobs)
+    grid_search.fit(X_resampled_train, y_resampled_train)
+    best_model = grid_search.best_estimator_
+
+    print("Best parameters found by GridSearchCV:", grid_search.best_params_)
+
+    y_proba = best_model.predict_proba(X_resampled_test)[:, 1]
+
+    return y_resampled_test, y_proba, np.arange(len(y_resampled_test))
 
 def logistic_cm_kfold(X, y, k=5, random_state=42, n_jobs=12):
     kf = KFold(n_splits=k, shuffle=True, random_state=random_state)
