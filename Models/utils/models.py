@@ -106,8 +106,8 @@ def xgboost_cm_gridsearch(X, y, random_state=42, n_jobs=12):
 
     model = XGBClassifier(eval_metric='logloss', random_state=random_state)
     parameters = {
-        'n_estimators': [50, 100, 200], # 樹的数量
-        'max_depth': [3, 5, 7],
+        'n_estimators': [50, 100, 200, 400], # 樹的数量
+        'max_depth': [3, 5, 7, 9],
         'learning_rate': [0.01, 0.1, 0.2],
         'colsample_bytree': [0.8, 1.0],  # 每棵樹使用的特征采样比例
     }
