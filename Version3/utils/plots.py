@@ -144,7 +144,7 @@ class MapperPlotter:
 
     def plot(self, choose, avg=None, save_path=None, set_label=False, size=100):
         
-        self.filtered_info = self.filtered_info[self.filtered_info['size'] > size]
+        # self.filtered_info = self.filtered_info[self.filtered_info['size'] > size]
         
         # 過濾掉無效的顏色資料
         valid_data = self.filtered_info.dropna(subset=['color_for_plot_fixed'])
@@ -303,6 +303,48 @@ class MapperPlotter:
             print(f"Plot saved to {save_path}")
         else:
             plt.show()
+
+    def update_colors(self, choose, threshold=5):
+        """
+        更新顏色對應，不重新跑 create_mapper_plot
+        """
+        # 計算類別出現次數
+        category_counts = self.rbind_data[choose].value_counts()
+
+        # 篩選出現次數大於 threshold 的標籤
+        filtered_categories = category_counts[category_counts > threshold].index
+
+        # 取得唯一值並過濾不需要的類別
+        unique_values = self.rbind_data[[choose, 'color_for_plot']].drop_duplicates()
+        unique_values = unique_values[unique_values[choose].isin(filtered_categories)]
+
+        # 設定新的顏色對應
+        unique_categories = filtered_categories.tolist()
+        color_palette = get_cmap("tab20", len(unique_categories))
+        color_mapping_fixed = {category: color_palette(i) for i, category in enumerate(unique_categories)}
+
+        # 更新 `self.filtered_info`
+        self.filtered_info = self.filtered_info.merge(unique_values, left_on='color', right_on='color_for_plot', how='left')
+
+        # 確保 `color_for_plot_fixed` 正確映射
+        if self.filtered_info[choose].dtype.name == 'category':
+            self.filtered_info['color_for_plot_fixed'] = self.filtered_info[choose].astype(str).map(color_mapping_fixed)
+        else:
+            if isinstance(self.filtered_info[choose], pd.Series):
+                self.filtered_info['color_for_plot_fixed'] = self.filtered_info[choose].map(color_mapping_fixed)
+            else:
+                self.filtered_info['color_for_plot_fixed'] = self.filtered_info[choose].astype(str).map(color_mapping_fixed)
+
+        # 為 threshold 過濾掉的類別設定默認顏色
+        default_color = (0.5, 0.5, 0.5, 1)
+        self.filtered_info['color_for_plot_fixed'] = self.filtered_info['color_for_plot_fixed'].apply(
+            lambda x: x if pd.notna(x) else default_color
+        )
+
+        # 更新 color_palette
+        self.color_palette = color_mapping_fixed
+        self.unique_categories = unique_categories  # 保存篩選後的 categories
+        print("Colors updated without rerunning create_mapper_plot.")
 
     def plot_3d(self, choose, avg=None, save_path=None, set_label=False, size=100):
         # 過濾掉無效的顏色資料
