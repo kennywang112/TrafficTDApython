@@ -142,7 +142,7 @@ class MapperPlotter:
         self.unique_categories = unique_categories  # 保存篩選後的 categories
         print("Colors mapped using predefined mapping.")
 
-    def plot(self, choose, avg=None, save_path=None, set_label=False, size=100):
+    def plot(self, choose, avg=None, save_path=None, set_label=False, size=100, anchor=1):
         
         # self.filtered_info = self.filtered_info[self.filtered_info['size'] > size]
         
@@ -190,7 +190,8 @@ class MapperPlotter:
                         label=name
                     ) for name in self.unique_categories
                 ]
-                plt.legend(handles=handles, title=f"{choose}", loc='upper right', bbox_to_anchor=(1, 1))
+                ax_position = plt.gca().get_position()
+                plt.legend(handles=handles, title=f"{choose}", loc='upper right', bbox_to_anchor=(anchor, 1))
 
         plt.xlabel('X')
         plt.ylabel('Y')
