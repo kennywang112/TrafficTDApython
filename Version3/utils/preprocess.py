@@ -34,6 +34,11 @@ column_mapping = {
     
     # 顯著特徵
     "道路型態子類別名稱": "Road Category - Subcategory",
+    
+    # 子類別
+    "事故類型及型態子類別名稱": "Accident Type and Form - Subcategory",
+    "當事者行動狀態子類別名稱": "Party Action Status - Subcategory",
+    "車輛撞擊部位子類別名稱-其他": "Vehicle Impact Area - Other - Subcategory",
 }
 
 value_mapping = {
@@ -222,21 +227,94 @@ value_mapping = {
     "未戴安全帽或未繫安全帶(未使用幼童安全椅)": "No Helmet or No Seatbelt (No Child Seat)",
     
     "未紀錄": "Not Recorded",
-    # Road Category - Subcategory
+    # 道路型態子類別名稱
     "直路": "Straight Road",
     "四岔路": "Four-Way Intersection",
-    "三岔路": "Three-Way Intersection (T-Junction/Y-Junction)",
-    "彎曲路及附近": "Curved Road and Nearby Areas",
+    "三岔路": "Three-Way Intersection",
     "多岔路": "Multi-Intersection Road",
+    "彎曲路及附近": "Curved Road and Nearby Areas",
+    "其他": "Other",
     "橋樑": "Bridge",
-    "高架道路": "Elevated Road",
     "坡路": "Slope Road",
+    "圓環": "Roundabout",
+    "高架道路": "Elevated Road",
     "地下道": "Underpass",
-    "Other": "Other",
     "隧道": "Tunnel",
-    "有遮斷器": "Gated Level Crossing",
     "涵洞": "Culvert",
-    "圓環": "Roundabout"
+    "廣場": "Plaza",
+    "休息站或服務區": "Rest Area or Service Area",
+    "有遮斷器": "Gated Level Crossing",
+    
+    # 事故類型及型態子類別名稱
+    "其他": "Other",
+    "側撞": "Side Collision",
+    "追撞": "Rear-End Collision",
+    "路口交岔撞": "Intersection Collision",
+    "同向擦撞": "Same-Direction Scrape Collision",
+    "路上翻車、摔倒": "Rollover or Falling on Road",
+    "對向擦撞": "Opposite-Direction Scrape Collision",
+    "穿越道路中": "Crossing the Road",
+    "對撞": "Head-On Collision",
+    "倒車撞": "Backing Collision",
+    "撞護欄(樁)": "Collision with Guardrail (Post)",
+    "同向通行中": "Same-Direction Travel Collision",
+    "衝出路外": "Ran Off the Road",
+    "撞動物": "Collision with Animal",
+    "撞電桿": "Collision with Utility Pole",
+    "撞交通島": "Collision with Traffic Island",
+    "撞號誌、標誌桿": "Collision with Traffic Signal/Signpost",
+    "對向通行中": "Opposite-Direction Travel Collision",
+    "撞路樹": "Collision with Roadside Tree",
+    "撞非固定設施": "Collision with Non-Fixed Facility",
+    "衝進路中": "Rushed into the Road",
+    "撞建築物": "Collision with Building",
+    "佇立路邊(外)": "Standing at the Roadside (Outside)",
+    "撞橋樑(橋墩)": "Collision with Bridge (Pier)",
+    "撞工程施工": "Collision with Roadwork Site",
+    "在路上作業中": "Operating on the Road",
+    "從停車後(或中)穿出": "Emerging from a Parked Position",
+    "在路上嬉戲": "Playing on the Road",
+    "衝過(或撞壞)遮斷器": "Broke Through (or Damaged) the Barrier Gate",
+    "正越過平交道中": "Crossing the Level Crossing",
+    
+    # 當事者行動狀態子類別名稱
+    "向前直行中": "Moving Straight Forward",
+    "左轉彎": "Turning Left",
+    "右轉彎": "Turning Right",
+    "起步": "Starting",
+    "迴轉或橫越道路中": "U-Turn or Crossing the Road",
+    "其他": "Other",
+    "向右變換車道": "Changing Lane to the Right",
+    "向左變換車道": "Changing Lane to the Left",
+    "超車(含超越)": "Overtaking (Including Passing)",
+    "倒車": "Reversing",
+    "急減速或急停止": "Sudden Deceleration or Sudden Stop",
+    "等待(引擎未熄火)": "Waiting (Engine On)",
+    "步行": "Walking",
+    "靜止(引擎熄火)": "Stationary (Engine Off)",
+    "不明": "Unknown",
+    "停車操作中": "Parking Maneuver",
+    "插入行列": "Merging into Traffic",
+    "奔跑": "Running",
+    "靜立(止)": "Standing Still",
+    "未紀錄": "Not Recorded",
+    "上、下車": "Getting On or Off the Vehicle",
+    
+    # 車輛撞擊部位子類別名稱-其他
+    "未紀錄": "Not Recorded",
+    "前車頭": "Front Bumper",
+    "右側車身": "Right Side Body",
+    "左側車身": "Left Side Body",
+    "右前車頭(身)": "Right Front Bumper (Body)",
+    "後車尾": "Rear Bumper",
+    "無撞擊": "No Impact",
+    "左前車頭(身)": "Left Front Bumper (Body)",
+    "不明": "Unknown",
+    "右後車尾(身)": "Right Rear Bumper (Body)",
+    "左後車尾(身)": "Left Rear Bumper (Body)",
+    "非汽、機及自行車": "Non-Motorized Vehicle or Bicycle",
+    "車頂": "Roof",
+    "車底": "Undercarriage"
 }
 
 def split_death_injury(data):
@@ -404,6 +482,7 @@ def process_other(A1, A2, downsample=False, en=False):
     # 處理年齡和速限
     rbind_data = process_age_speed(rbind_data)
     death = rbind_data['死亡']
+    injuried = rbind_data['受傷']
     rbind_data.drop(['死亡', '受傷'], axis=1, inplace=True)
     
     # 唯一值處理
@@ -425,4 +504,29 @@ def process_other(A1, A2, downsample=False, en=False):
     print('dummy_data:', dummy_data.shape)
     mapper_numpy = dummy_data.to_numpy()
     
-    return mapper_numpy, rbind_data, dummy_data, death
+    return mapper_numpy, rbind_data, dummy_data, death, injuried
+
+def describe_process_other(A1, A2, en=False):
+    
+    rbind_data = pd.concat([A1, A2], axis=0, ignore_index=True)
+
+    rbind_data.drop(columns=['發生月份'], inplace=True)
+    
+    # 只處理年齡
+    bins_age = [0, 14, 24, 34, 44, 54, 64, 74, float('inf')]
+    labels_age = ['未滿15歲', '15~24', '25~34', '35~44', '45~54', '55~64', '65~74', '75+']
+    rbind_data['當事者事故發生時年齡'] = pd.cut(rbind_data['當事者事故發生時年齡'], bins=bins_age, labels=labels_age, right=False)
+    
+    # 唯一值處理
+    columns_to_drop = []
+    for column in rbind_data.columns:
+        if rbind_data[column].nunique() == 1:  # 檢查唯一值數量是否等於 1
+            columns_to_drop.append(column)
+    print(columns_to_drop)
+    rbind_data.drop(columns=columns_to_drop, inplace=True)
+    
+    if en:
+        rbind_data.rename(columns=column_mapping, inplace=True)
+        rbind_data.replace(value_mapping, inplace=True)
+    
+    return rbind_data
