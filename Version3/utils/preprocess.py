@@ -514,7 +514,10 @@ def describe_process_other(A1, A2, en=False):
     
     # 只處理年齡
     bins_age = [0, 14, 24, 34, 44, 54, 64, 74, float('inf')]
-    labels_age = ['未滿15歲', '15~24', '25~34', '35~44', '45~54', '55~64', '65~74', '75+']
+    if en:
+        labels_age = ['Under 15', '15~24', '25~34', '35~44', '45~54', '55~64', '65~74', '75+']
+    else:
+        labels_age = ['未滿15歲', '15~24', '25~34', '35~44', '45~54', '55~64', '65~74', '75+']
     rbind_data['當事者事故發生時年齡'] = pd.cut(rbind_data['當事者事故發生時年齡'], bins=bins_age, labels=labels_age, right=False)
     
     # 唯一值處理
