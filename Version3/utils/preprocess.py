@@ -414,7 +414,9 @@ def preprocess(input_data, target, lst=False):
     # 篩選到第一個順位，因為注重的是單次事故的情況
     main_data = input_data[input_data['當事者順位'] == 1].reset_index(drop=True, inplace=False)
     sample_data = main_data[main_data['發生月份'] < 11]
-    selected_data = sample_data[select_lst]
+    # 額外保留時間欄位供後續「時間切分」使用（不放進 select_lst，避免進入 MCA/Mapper）
+    _time_cols = [c for c in ['發生日期', '發生時間'] if c in sample_data.columns]
+    selected_data = sample_data[select_lst + [c for c in _time_cols if c not in select_lst]]
     
     # 將資料分出死亡和受傷，合併到原本的資料後去除多餘的死亡受傷人數
     split_death_injury_data = split_death_injury(selected_data['死亡受傷人數'])
@@ -466,8 +468,8 @@ def preprocess(input_data, target, lst=False):
         
     return full_data
 
-def process_other(A1, A2, downsample=False, en=False):
-    
+def process_other(A1, A2, downsample=False, en=False, return_time=False):
+
     if downsample:
         # 下採樣資料，專用在ForMatrix檔案
         sampling_ratio = downsample  # 下採樣比例，根據A1 和 A2 原始數據量比例調整
@@ -483,8 +485,12 @@ def process_other(A1, A2, downsample=False, en=False):
     rbind_data = process_age_speed(rbind_data)
     death = rbind_data['死亡']
     injuried = rbind_data['受傷']
-    rbind_data.drop(['死亡', '受傷'], axis=1, inplace=True)
-    
+    # 抽出時間欄位（比照 death/受傷，不進 MCA/Mapper 與 kmodes），供後續時間切分使用。
+    # 於 notebook 分群後再貼回 rbind_data，子群 CSV 便會帶時間欄位。
+    time_cols = [c for c in ['發生日期', '發生時間'] if c in rbind_data.columns]
+    date_info = rbind_data[time_cols].copy()
+    rbind_data.drop(['死亡', '受傷'] + time_cols, axis=1, inplace=True)
+
     # 唯一值處理
     columns_to_drop = []
     for column in rbind_data.columns:
@@ -503,7 +509,9 @@ def process_other(A1, A2, downsample=False, en=False):
     dummy_data = pd.get_dummies(rbind_data)
     print('dummy_data:', dummy_data.shape)
     mapper_numpy = dummy_data.to_numpy()
-    
+
+    if return_time:
+        return mapper_numpy, rbind_data, dummy_data, death, injuried, date_info
     return mapper_numpy, rbind_data, dummy_data, death, injuried
 
 def describe_process_other(A1, A2, en=False):
