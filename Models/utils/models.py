@@ -2,7 +2,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV, StratifiedKFold, KFold
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, precision_score, recall_score, f1_score
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.compose import ColumnTransformer, make_column_selector
 from sklearn.pipeline import Pipeline as SkPipeline
 import pandas as pd
 import numpy as np
@@ -67,10 +68,22 @@ def _prepare_and_split(X, y, encoding, random_state, train_under_ratio=None, bal
 
 
 def _wrap(clf, encoding):
-    """onehot 模式在 clf 前加 OneHotEncoder；dummy 模式只有 clf。"""
+    """onehot 模式：用 ColumnTransformer 分別處理「類別欄」與「數值欄」；dummy 模式只有 clf。
+
+    - 類別欄（object/category）→ OneHotEncoder(min_frequency=10, handle_unknown='infrequent_if_exist')
+      （保留罕見類別合併與未見類別處理）。
+    - 數值欄（如拓樸的 degree/size/num_nodes/outlier）→ StandardScaler，不會被 one-hot 亂編。
+    這樣同一個 onehot 模式可同時吃「純類別」(OriginModel) 與「類別+數值」(Full 加拓樸) 兩種輸入。
+    """
     if encoding == 'onehot':
+        cat_sel = make_column_selector(dtype_include=['object', 'category'])
+        num_sel = make_column_selector(dtype_include=np.number)
         ohe = OneHotEncoder(handle_unknown='infrequent_if_exist', min_frequency=10, sparse_output=True)
-        return SkPipeline([('oh', ohe), ('clf', clf)])
+        pre = ColumnTransformer(
+            [('oh', ohe, cat_sel),
+             ('num', StandardScaler(with_mean=False), num_sel)],
+            remainder='drop', sparse_threshold=0.3)
+        return SkPipeline([('pre', pre), ('clf', clf)])
     return SkPipeline([('clf', clf)])
 
 
