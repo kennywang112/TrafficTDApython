@@ -1,7 +1,9 @@
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV, StratifiedKFold, KFold
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, precision_score, recall_score, f1_score
+from sklearn.metrics import (accuracy_score, confusion_matrix, classification_report,
+                             precision_score, recall_score, f1_score,
+                             precision_recall_curve, roc_curve)
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer, make_column_selector
 from sklearn.pipeline import Pipeline as SkPipeline
@@ -67,6 +69,218 @@ def _prepare_and_split(X, y, encoding, random_state, train_under_ratio=None, bal
     return X_train, X_test, y_train, y_test
 
 
+def _prepare_train_validation_test(
+        X, y, encoding, random_state, train_under_ratio=None,
+        train_frac=0.7, validation_frac=0.1, balance_test=False):
+    """依時間切成 train/validation/test，預設 70%/10%/20%。
+
+    validation 保留真實類別比例，專門用來選 threshold；test 完全不參與
+    preprocessing、模型 fitting、下採樣或 threshold selection。
+    """
+    if not (0 < train_frac < 1 and 0 < validation_frac < 1):
+        raise ValueError('train_frac 與 validation_frac 必須介於 0 和 1')
+    if train_frac + validation_frac >= 1:
+        raise ValueError('train_frac + validation_frac 必須小於 1')
+
+    n = len(X)
+    n_train = int(np.floor(n * train_frac))
+    n_validation = int(np.floor(n * validation_frac))
+    validation_end = n_train + n_validation
+    if n_train == 0 or n_validation == 0 or validation_end >= n:
+        raise ValueError('資料量不足以建立 train/validation/test')
+
+    X_train = X.iloc[:n_train]
+    X_validation = X.iloc[n_train:validation_end]
+    X_test = X.iloc[validation_end:]
+    y_train = y.iloc[:n_train]
+    y_validation = y.iloc[n_train:validation_end]
+    y_test = y.iloc[validation_end:]
+
+    # dummy vocabulary 也只由 train 決定，validation/test 僅對齊 train 欄位。
+    if encoding == 'dummy':
+        X_train = pd.get_dummies(X_train)
+        X_validation = pd.get_dummies(X_validation).reindex(
+            columns=X_train.columns, fill_value=0)
+        X_test = pd.get_dummies(X_test).reindex(
+            columns=X_train.columns, fill_value=0)
+
+    # 只對真正用來 fit 模型的 train 下採樣；validation/test 保留真實死亡率。
+    if train_under_ratio is not None:
+        y_arr = np.asarray(y_train)
+        n_pos = int((y_arr == 1).sum())
+        n_neg = int((y_arr == 0).sum())
+        if n_pos > 0 and n_neg > n_pos / train_under_ratio:
+            rus_train = RandomUnderSampler(
+                sampling_strategy=train_under_ratio, random_state=random_state)
+            X_train, y_train = rus_train.fit_resample(X_train, y_train)
+
+    if balance_test:
+        min_class_count = min((y_test == 0).sum(), (y_test == 1).sum())
+        rus_test = RandomUnderSampler(
+            sampling_strategy={0: min_class_count, 1: min_class_count},
+            random_state=random_state)
+        X_test, y_test = rus_test.fit_resample(X_test, y_test)
+
+    return (
+        X_train, X_validation, X_test,
+        y_train, y_validation, y_test,
+    )
+
+
+def select_threshold_at_target_recall(y_validation, validation_scores, target_recall=0.8):
+    """在 validation 上：recall 至少達標時，選 precision 最高的 threshold。
+
+    若 precision 並列，選 recall 最接近 target 的 threshold，避免不必要的警報。
+    回傳的 threshold 只可套到 untouched test，不可再用 test label 調整。
+    """
+    yv = np.asarray(y_validation).astype(int)
+    sv = np.asarray(validation_scores, dtype=float)
+    if not 0 < target_recall <= 1:
+        raise ValueError('target_recall 必須介於 0（不含）和 1（含）')
+    if np.unique(yv).size < 2:
+        raise ValueError('validation 必須同時包含死亡與非死亡案例')
+
+    precision, recall, thresholds = precision_recall_curve(yv, sv)
+    eligible = np.flatnonzero(recall[:-1] >= target_recall)
+    if eligible.size == 0:
+        raise ValueError(f'validation 上無法達到 target_recall={target_recall}')
+
+    eligible_precision = precision[:-1][eligible]
+    best_precision = np.nanmax(eligible_precision)
+    tied = eligible[np.isclose(
+        eligible_precision, best_precision, rtol=1e-12, atol=1e-15)]
+    best_idx = tied[np.argmin(np.abs(recall[:-1][tied] - target_recall))]
+    threshold = float(thresholds[best_idx])
+    pred = (sv >= threshold).astype(int)
+
+    return {
+        'selected_threshold': threshold,
+        'target_recall': float(target_recall),
+        'validation_recall': float(recall_score(yv, pred, zero_division=0)),
+        'validation_precision': float(precision_score(yv, pred, zero_division=0)),
+        'validation_f1': float(f1_score(yv, pred, zero_division=0)),
+        'n_validation': int(len(yv)),
+        'n_validation_positive': int(yv.sum()),
+        'n_validation_predicted_positive': int(pred.sum()),
+    }
+
+
+def select_threshold_max_f1(y_validation, validation_scores):
+    """在 validation 上選擇 F1-score 最大的 threshold。
+
+    每個模型只使用自己的 validation 分數選門檻；untouched test 不參與。
+    若多個門檻的 F1 相同，先選 recall 較高者，再選其中較高的 threshold。
+    """
+    yv = np.asarray(y_validation).astype(int)
+    sv = np.asarray(validation_scores, dtype=float)
+    if np.unique(yv).size < 2:
+        raise ValueError('validation 必須同時包含死亡與非死亡案例')
+    if not np.isfinite(sv).all():
+        raise ValueError('validation_scores 必須全部為有限數值')
+
+    precision, recall, thresholds = precision_recall_curve(yv, sv)
+    if thresholds.size == 0:
+        raise ValueError('validation 無法產生可用的 threshold')
+
+    p = precision[:-1]
+    r = recall[:-1]
+    denominator = p + r
+    f1_values = np.divide(
+        2 * p * r,
+        denominator,
+        out=np.zeros_like(denominator, dtype=float),
+        where=denominator > 0,
+    )
+    best_f1 = np.nanmax(f1_values)
+    tied = np.flatnonzero(np.isclose(
+        f1_values, best_f1, rtol=1e-12, atol=1e-15))
+    best_recall = np.nanmax(r[tied])
+    tied = tied[np.isclose(r[tied], best_recall, rtol=1e-12, atol=1e-15)]
+    best_idx = tied[-1]
+
+    threshold = float(thresholds[best_idx])
+    pred = (sv >= threshold).astype(int)
+    return {
+        'selected_threshold': threshold,
+        'threshold_strategy': 'max_validation_f1',
+        'validation_recall': float(recall_score(yv, pred, zero_division=0)),
+        'validation_precision': float(precision_score(yv, pred, zero_division=0)),
+        'validation_f1': float(f1_score(yv, pred, zero_division=0)),
+        'n_validation': int(len(yv)),
+        'n_validation_positive': int(yv.sum()),
+        'n_validation_predicted_positive': int(pred.sum()),
+    }
+
+
+def select_threshold_youden(y_validation, validation_scores):
+    """在 validation 上選擇最大化 Youden's J 的 threshold。
+
+    J = sensitivity + specificity - 1 = TPR - FPR。若多個有限門檻的
+    J 相同，先選 sensitivity 較高者；test label 完全不參與門檻選擇。
+    """
+    yv = np.asarray(y_validation).astype(int)
+    sv = np.asarray(validation_scores, dtype=float)
+    if np.unique(yv).size < 2:
+        raise ValueError('validation 必須同時包含死亡與非死亡案例')
+    if not np.isfinite(sv).all():
+        raise ValueError('validation_scores 必須全部為有限數值')
+
+    fpr, tpr, thresholds = roc_curve(
+        yv, sv, drop_intermediate=False)
+    finite = np.flatnonzero(np.isfinite(thresholds))
+    if finite.size == 0:
+        raise ValueError('validation 無法產生有限的 threshold')
+
+    youden_values = tpr - fpr
+    best_j = np.nanmax(youden_values[finite])
+    tied = finite[np.isclose(
+        youden_values[finite], best_j, rtol=1e-12, atol=1e-15)]
+    best_sensitivity = np.nanmax(tpr[tied])
+    tied = tied[np.isclose(
+        tpr[tied], best_sensitivity, rtol=1e-12, atol=1e-15)]
+    best_idx = tied[np.argmax(thresholds[tied])]
+
+    threshold = float(thresholds[best_idx])
+    pred = (sv >= threshold).astype(int)
+    tn, fp, fn, tp = confusion_matrix(
+        yv, pred, labels=[0, 1]).ravel()
+    sensitivity = tp / (tp + fn) if tp + fn else 0.0
+    specificity = tn / (tn + fp) if tn + fp else 0.0
+    return {
+        'selected_threshold': threshold,
+        'threshold_strategy': 'max_validation_youden_j',
+        'validation_youden_j': float(sensitivity + specificity - 1),
+        'validation_recall': float(sensitivity),
+        'validation_specificity': float(specificity),
+        'validation_precision': float(precision_score(
+            yv, pred, zero_division=0)),
+        'validation_f1': float(f1_score(yv, pred, zero_division=0)),
+        'n_validation': int(len(yv)),
+        'n_validation_positive': int(yv.sum()),
+        'n_validation_predicted_positive': int(pred.sum()),
+    }
+
+
+def _select_validation_threshold(
+        y_validation, validation_scores, threshold_strategy=None,
+        target_recall=None):
+    """選擇 validation threshold，同時保留舊 target_recall 呼叫的相容性。"""
+    if threshold_strategy is not None and target_recall is not None:
+        raise ValueError('threshold_strategy 與 target_recall 不可同時指定')
+    if threshold_strategy == 'max_f1':
+        return select_threshold_max_f1(y_validation, validation_scores)
+    if threshold_strategy == 'youden':
+        return select_threshold_youden(y_validation, validation_scores)
+    if threshold_strategy is not None:
+        raise ValueError(
+            f"不支援 threshold_strategy={threshold_strategy!r}；"
+            "目前可用 'max_f1' 或 'youden'")
+    if target_recall is not None:
+        return select_threshold_at_target_recall(
+            y_validation, validation_scores, target_recall)
+    raise ValueError('必須指定 threshold_strategy 或 target_recall')
+
+
 def _wrap(clf, encoding):
     """onehot 模式：用 ColumnTransformer 分別處理「類別欄」與「數值欄」；dummy 模式只有 clf。
 
@@ -87,8 +301,20 @@ def _wrap(clf, encoding):
     return SkPipeline([('clf', clf)])
 
 
-def logistic_cm_gridsearch(X, y, random_state=42, n_jobs=-1, encoding='dummy', n_iter=10, train_under_ratio=None, balance_test=False):
-    X_train, X_test_bal, y_train, y_test_bal = _prepare_and_split(X, y, encoding, random_state, train_under_ratio, balance_test)
+def logistic_cm_gridsearch(
+        X, y, random_state=42, n_jobs=-1, encoding='dummy', n_iter=10,
+        train_under_ratio=None, balance_test=False, target_recall=None,
+        train_frac=0.7, validation_frac=0.1, threshold_strategy=None):
+    use_validation = target_recall is not None or threshold_strategy is not None
+    if not use_validation:
+        X_train, X_test, y_train, y_test = _prepare_and_split(
+            X, y, encoding, random_state, train_under_ratio, balance_test)
+        X_validation = y_validation = None
+    else:
+        (X_train, X_validation, X_test,
+         y_train, y_validation, y_test) = _prepare_train_validation_test(
+            X, y, encoding, random_state, train_under_ratio,
+            train_frac, validation_frac, balance_test)
 
     # 以 class_weight='balanced' 取代 SMOTE：速度快很多、無重採樣洩漏疑慮
     clf = LogisticRegression(solver='saga', max_iter=5000,
@@ -102,12 +328,30 @@ def logistic_cm_gridsearch(X, y, random_state=42, n_jobs=-1, encoding='dummy', n
     best_model = search.best_estimator_
     print("Best parameters:", search.best_params_)
 
-    y_proba = best_model.predict_proba(X_test_bal)[:, 1]
-    return y_test_bal, y_proba, np.arange(len(y_test_bal))
+    test_scores = best_model.predict_proba(X_test)[:, 1]
+    if not use_validation:
+        return y_test, test_scores, np.arange(len(y_test))
+
+    validation_scores = best_model.predict_proba(X_validation)[:, 1]
+    threshold_info = _select_validation_threshold(
+        y_validation, validation_scores, threshold_strategy, target_recall)
+    return y_test, test_scores, np.arange(len(y_test)), threshold_info
 
 
-def linear_svc_cm_gridsearch(X, y, random_state=42, n_jobs=-1, encoding='dummy', n_iter=10, train_under_ratio=None, balance_test=False):
-    X_train, X_test_bal, y_train, y_test_bal = _prepare_and_split(X, y, encoding, random_state, train_under_ratio, balance_test)
+def linear_svc_cm_gridsearch(
+        X, y, random_state=42, n_jobs=-1, encoding='dummy', n_iter=10,
+        train_under_ratio=None, balance_test=False, target_recall=None,
+        train_frac=0.7, validation_frac=0.1, threshold_strategy=None):
+    use_validation = target_recall is not None or threshold_strategy is not None
+    if not use_validation:
+        X_train, X_test, y_train, y_test = _prepare_and_split(
+            X, y, encoding, random_state, train_under_ratio, balance_test)
+        X_validation = y_validation = None
+    else:
+        (X_train, X_validation, X_test,
+         y_train, y_validation, y_test) = _prepare_train_validation_test(
+            X, y, encoding, random_state, train_under_ratio,
+            train_frac, validation_frac, balance_test)
 
     clf = LinearSVC(class_weight='balanced', max_iter=100000, random_state=random_state)
     pipe = _wrap(clf, encoding)
@@ -119,12 +363,30 @@ def linear_svc_cm_gridsearch(X, y, random_state=42, n_jobs=-1, encoding='dummy',
     best_model = search.best_estimator_
     print("Best parameters:", search.best_params_)
 
-    decision_scores = best_model.decision_function(X_test_bal)
-    return y_test_bal, decision_scores, np.arange(len(y_test_bal))
+    test_scores = best_model.decision_function(X_test)
+    if not use_validation:
+        return y_test, test_scores, np.arange(len(y_test))
+
+    validation_scores = best_model.decision_function(X_validation)
+    threshold_info = _select_validation_threshold(
+        y_validation, validation_scores, threshold_strategy, target_recall)
+    return y_test, test_scores, np.arange(len(y_test)), threshold_info
 
 
-def xgboost_cm_gridsearch(X, y, random_state=42, n_jobs=-1, encoding='dummy', n_iter=20, train_under_ratio=None, balance_test=False):
-    X_train, X_test_bal, y_train, y_test_bal = _prepare_and_split(X, y, encoding, random_state, train_under_ratio, balance_test)
+def xgboost_cm_gridsearch(
+        X, y, random_state=42, n_jobs=-1, encoding='dummy', n_iter=20,
+        train_under_ratio=None, balance_test=False, target_recall=None,
+        train_frac=0.7, validation_frac=0.1, threshold_strategy=None):
+    use_validation = target_recall is not None or threshold_strategy is not None
+    if not use_validation:
+        X_train, X_test, y_train, y_test = _prepare_and_split(
+            X, y, encoding, random_state, train_under_ratio, balance_test)
+        X_validation = y_validation = None
+    else:
+        (X_train, X_validation, X_test,
+         y_train, y_validation, y_test) = _prepare_train_validation_test(
+            X, y, encoding, random_state, train_under_ratio,
+            train_frac, validation_frac, balance_test)
 
     # scale_pos_weight 取代 SMOTE 處理不平衡；tree_method='hist' 大幅加速
     pos = max(int((y_train == 1).sum()), 1)
@@ -148,8 +410,14 @@ def xgboost_cm_gridsearch(X, y, random_state=42, n_jobs=-1, encoding='dummy', n_
     best_model = search.best_estimator_
     print("Best parameters:", search.best_params_)
 
-    y_proba = best_model.predict_proba(X_test_bal)[:, 1]
-    return y_test_bal, y_proba, np.arange(len(y_test_bal))
+    test_scores = best_model.predict_proba(X_test)[:, 1]
+    if not use_validation:
+        return y_test, test_scores, np.arange(len(y_test))
+
+    validation_scores = best_model.predict_proba(X_validation)[:, 1]
+    threshold_info = _select_validation_threshold(
+        y_validation, validation_scores, threshold_strategy, target_recall)
+    return y_test, test_scores, np.arange(len(y_test)), threshold_info
 
 
 # ---------------------------------------------------------------------------

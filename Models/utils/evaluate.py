@@ -1,6 +1,7 @@
 """5.4 / 5.5 評估工具：從既有 pkl 讀出預測結果、計算指標、彙總子群、建對照表。
 
-每個 pkl 的格式皆為 dict：{'y', 'decision_scores', 'indices', 'elapsed_time'}。
+每個 pkl 的基本格式為 dict：{'y', 'decision_scores', 'indices', 'elapsed_time'}。
+新版可另含 selected_threshold / threshold_selection（由 validation 決定）。
 - xgboost / logistic 的 decision_scores 是機率（[0,1]）
 - svc 的 decision_scores 是 decision_function（可正可負）
 指標中 roc_auc / pr_auc 為 threshold-free；labeled 指標依分數型態自動選門檻
@@ -82,10 +83,19 @@ def load_pkl(path):
 
 
 def metrics_from_pkl(path, threshold='fixed'):
-    """單一 pkl → 指標；檔案不存在回傳 None。"""
+    """單一 pkl → 指標；檔案不存在回傳 None。
+
+    threshold='saved' 時使用 validation 階段存入 pkl 的 selected_threshold，
+    不會再利用 test label 選門檻。
+    """
     d = load_pkl(path)
     if d is None:
         return None
+    if threshold == 'saved':
+        if 'selected_threshold' not in d:
+            raise ValueError(
+                f"{path} 沒有 selected_threshold；請先重跑 validation-threshold 訓練 cell")
+        threshold = d['selected_threshold']
     return metrics_from_arrays(d['y'], d['decision_scores'], threshold=threshold)
 
 

@@ -1,4 +1,5 @@
 .ipynb_checkpoints
+.venv
 .Rproj.user
 __pycache__
 Ref
@@ -30,6 +31,8 @@ Version3/Component15Car
 Version3/Map
 Version3/Plots
 
+Version3/ModelPerformance/
+
 Version4/GridSearch
 Version4/Component8Car
 Version4/Component9Motor
@@ -40,3 +43,8 @@ ForMatrix/CalculatedData
 ForMatrix/Plot
 
 CompareOther
+
+Models/ModelPerformance
+Models/ModelPerformanceSeed
+
+Paper
